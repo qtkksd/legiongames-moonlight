@@ -98,8 +98,16 @@ jobs:
         uses: actions/upload-artifact@v5
         if: runner.os == 'Windows'
         with:
-          name: Moonlight-${{ runner.os }}-arm64-${{ env.CI_VERSION }}
+          name: Moonlight-Windows-arm64-${{ env.CI_VERSION }}
           path: build/deploy-arm64-release/*
+          if-no-files-found: error
+
+      - name: Upload Installer (Windows)
+        uses: actions/upload-artifact@v5
+        if: runner.os == 'Windows'
+        with:
+          name: Moonlight-Windows-Installer-${{ env.CI_VERSION }}
+          path: build/installer-Release/MoonlightSetup-*.exe
           if-no-files-found: error
 
       - name: Upload Binaries (macOS)
