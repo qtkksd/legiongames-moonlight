@@ -153,7 +153,7 @@ void StreamingPreferences::reload()
     reverseScrollDirection = settings.value(SER_REVERSESCROLL, false).toBool();
     swapFaceButtons = settings.value(SER_SWAPFACEBUTTONS, false).toBool();
     keepAwake = settings.value(SER_KEEPAWAKE, true).toBool();
-    streamMicToHost = settings.value(SER_STREAMMIC, false).toBool();
+    streamMicToHost = settings.value(SER_STREAMMIC, true).toBool();
     micCaptureDevice = settings.value(SER_MIC_CAPTURE_DEVICE, QString()).toString();
     enableHdr = settings.value(SER_HDR, false).toBool();
     captureSysKeysMode = static_cast<CaptureSysKeysMode>(settings.value(SER_CAPTURESYSKEYS,
