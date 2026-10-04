@@ -255,6 +255,12 @@ if "%ML_SYMBOL_STORE%" NEQ "" (
     if !ERRORLEVEL! NEQ 0 goto Error
 )
 
+rem Copy the MSVC runtime DLLs before WiX harvests the deploy folder so the MSI
+rem is self-contained and does not depend on a VC++ redist download at install time.
+echo Copying MSVC runtime DLLs
+copy "%VC_REDIST_DLL_PATH%\*.dll" %DEPLOY_FOLDER%
+if !ERRORLEVEL! NEQ 0 goto Error
+
 echo Building MSI
 cmd /c "set VERSION= && msbuild -Restore %SOURCE_ROOT%\wix\Moonlight\Moonlight.wixproj /p:Configuration=%BUILD_CONFIG% /p:Platform=%ARCH% /p:MSBuildProjectExtensionsPath=%BUILD_FOLDER%\"
 if !ERRORLEVEL! NEQ 0 goto Error
@@ -264,10 +270,6 @@ copy %BUILD_FOLDER%\app\%BUILD_CONFIG%\Moonlight.exe %DEPLOY_FOLDER%
 if !ERRORLEVEL! NEQ 0 goto Error
 
 echo Building portable package
-rem This must be done after WiX harvesting and signing, since the VCRT dlls are MS signed
-rem and should not be harvested for inclusion in the full installer
-copy "%VC_REDIST_DLL_PATH%\*.dll" %DEPLOY_FOLDER%
-if !ERRORLEVEL! NEQ 0 goto Error
 
 rem Since we don't publish Windows installers for CI builds, let's use the user profile
 rem location of the regular non-portable version by default. We'll place a file in the
