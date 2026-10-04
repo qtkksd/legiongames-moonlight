@@ -75,7 +75,7 @@ constexpr int    kMaxOpusBytes = 1500;
 //
 // Reference: moonlight-mic.md open thread "POC SDL2 fix may have stack-overrun
 // bug" and plan question "Encoder configuration sweet spot".
-constexpr int kBitrate = 48000;
+constexpr int kBitrate = 64000;
 
 bool containsCaseInsensitive(const std::string& haystack, const char* needle)
 {
