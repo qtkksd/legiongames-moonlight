@@ -20,18 +20,44 @@ CenteredGridView {
     cellWidth: 310; cellHeight: 330;
     objectName: qsTr("Computers")
 
-    // Faded LegionGames mark sitting behind the list of PCs
-    Image {
+    // Faded LegionGames mark sitting behind the list of PCs. The hexagonal
+    // "wheel" spins (matching the website SVG animation) while the alien glyph
+    // in the center stays static.
+    Item {
         id: backgroundLogo
-        source: "qrc:/res/moonlight.svg"
-        fillMode: Image.PreserveAspectFit
-        smooth: true
-        opacity: 0.08
         width: Math.min(pcGrid.width, pcGrid.height) * 0.7
         height: width
         x: (pcGrid.width - width) / 2
         y: (pcGrid.height - height) / 2
         z: -1
+        opacity: 0.08
+
+        Image {
+            id: backgroundLogoWheel
+            anchors.fill: parent
+            source: "qrc:/res/moonlight_wheel.svg"
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+
+            NumberAnimation on rotation {
+                from: 0
+                to: 360
+                duration: 72000
+                loops: Animation.Infinite
+                running: true
+            }
+        }
+
+        Image {
+            // Exact alien glyph used on the website (noto_alien_inverted.svg).
+            // The 64x64 glyph group maps to 200/640 of the wheel's drawing area.
+            source: "qrc:/res/noto_alien_inverted.svg"
+            width: backgroundLogoWheel.width * (200.0 / 640.0)
+            height: width
+            anchors.centerIn: parent
+            fillMode: Image.PreserveAspectFit
+            smooth: false
+        }
     }
 
     Component.onCompleted: {

@@ -2,6 +2,7 @@
 #include "boxartmanager.h"
 #include "nvhttp.h"
 #include "nvpairingmanager.h"
+#include "netbirddiscovery.h"
 
 #include <Limelight.h>
 #include <QtEndian>
@@ -11,6 +12,7 @@
 #include <QCoreApplication>
 #include <QRandomGenerator>
 #include <QAbstractSocket>
+#include <QNetworkInterface>
 
 #define SER_HOSTS "hosts"
 #define SER_HOSTS_BACKUP "hostsbackup"
@@ -163,6 +165,7 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
     : m_Prefs(prefs),
       m_PollingRef(0),
       m_MdnsBrowser(nullptr),
+      m_NetbirdDiscovery(nullptr),
       m_CompatFetcher(nullptr),
       m_NeedsDelayedFlush(false)
 {
@@ -188,6 +191,9 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
 
     // Fetch latest compatibility data asynchronously
     m_CompatFetcher.start();
+
+    // Discovers club hosts on the NetBird overlay (unicast, unlike mDNS)
+    m_NetbirdDiscovery = new NetbirdDiscovery(this);
 
     // Start the delayed flush thread to handle saveHosts() calls
     m_DelayedFlushThread = new DelayedFlushThread(this);
@@ -226,6 +232,10 @@ ComputerManager::~ComputerManager()
         delete computer;
         m_PendingResolution.removeFirst();
     }
+
+    // Stop NetBird peer discovery
+    delete m_NetbirdDiscovery;
+    m_NetbirdDiscovery = nullptr;
 
     // Delete the browser to stop discovery
     delete m_MdnsBrowser;
@@ -380,9 +390,14 @@ void ComputerManager::startPolling()
                     this, &ComputerManager::handleMdnsServiceResolved);
             m_PendingResolution.append(pendingComputer);
         });
+
+        // Discover club hosts on the NetBird overlay. mDNS multicast does not
+        // traverse the NetBird (WireGuard) tunnel, so this asks the local
+        // NetBird daemon for its peers and reaches them over unicast.
+        m_NetbirdDiscovery->start();
     }
     else {
-        qWarning() << "mDNS is disabled by user preference";
+        qWarning() << "Automatic host discovery is disabled by user preference";
     }
 
     // Start polling threads for each known host
@@ -430,6 +445,11 @@ static bool isNetbirdSubnetAddress(const QHostAddress& address)
     return (address.toIPv4Address() & 0xFFFF0000u) == 0x64740000u;
 }
 
+static bool isLocalHostAddress(const QHostAddress& address)
+{
+    return QNetworkInterface::allAddresses().contains(address);
+}
+
 void ComputerManager::handleMdnsServiceResolved(MdnsPendingComputer* computer,
                                                 QVector<QHostAddress>& addresses)
 {
@@ -439,7 +459,7 @@ void ComputerManager::handleMdnsServiceResolved(MdnsPendingComputer* computer,
     // Add the host using its NetBird IPv4 address. Hosts discovered outside the
     // NetBird subnet are ignored so we only surface club PCs.
     for (const QHostAddress& address : std::as_const(addresses)) {
-        if (isNetbirdSubnetAddress(address)) {
+        if (isNetbirdSubnetAddress(address) && !isLocalHostAddress(address)) {
             addNewHost(NvAddress(address, computer->port()),
                        true, computer->hostname(),
                        NvAddress(v6Global, computer->port()));
@@ -712,6 +732,9 @@ void ComputerManager::stopPollingAsync()
         computer->deleteLater();
         m_PendingResolution.removeFirst();
     }
+
+    // Stop NetBird peer discovery
+    m_NetbirdDiscovery->stop();
 
     // Delete the browser and server to stop discovery and refresh polling
     delete m_MdnsBrowser;

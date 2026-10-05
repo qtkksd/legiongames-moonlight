@@ -19,6 +19,7 @@
 #include <QWaitCondition>
 
 class ComputerManager;
+class NetbirdDiscovery;
 
 class DelayedFlushThread : public QThread
 {
@@ -278,6 +279,7 @@ private:
     QSharedPointer<QMdnsEngine::Server> m_MdnsServer;
     QMdnsEngine::Browser* m_MdnsBrowser;
     QVector<MdnsPendingComputer*> m_PendingResolution;
+    NetbirdDiscovery* m_NetbirdDiscovery;
     CompatFetcher m_CompatFetcher;
     DelayedFlushThread* m_DelayedFlushThread;
     QMutex m_DelayedFlushMutex; // Lock ordering: Must never be acquired while holding NvComputer lock
