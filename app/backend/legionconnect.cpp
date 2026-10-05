@@ -30,6 +30,7 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
     m_PairingOk(false),
     m_PinDone(false),
     m_PinOk(false),
+    m_PinAttempts(0),
     m_AddRetries(0)
 {
     // Allow HTTP redirects (e.g. https://legiongames.ru -> www)
@@ -222,16 +223,25 @@ void LegionConnect::startPairing(NvComputer* computer)
     m_PinDone = false;
     m_PinOk = false;
 
+    m_PinAttempts = 0;
     emit status(tr("Сопряжение с ПК..."));
 
-    // Kick off pairing and relay the PIN to Django in parallel. Django posts it
-    // to Sunshine, which completes the handshake.
+    // Start the client's pairing handshake first. The host holds the
+    // getservercert request open until the PIN arrives, so we give it a moment
+    // to register the pairing session before relaying the PIN (avoids a race
+    // where /api/pin reaches Sunshine before the session exists).
     m_Manager->pairHost(computer, m_Pin);
-    submitPin();
+    QTimer::singleShot(1000, this, &LegionConnect::submitPin);
 }
 
 void LegionConnect::submitPin()
 {
+    if (m_Stage != Pairing || m_PinDone) {
+        return;
+    }
+
+    m_PinAttempts++;
+
     QJsonObject body;
     body[QStringLiteral("pin")] = m_Pin;
 
@@ -244,27 +254,45 @@ void LegionConnect::submitPin()
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
 
-        if (m_PinDone) {
+        if (m_Stage != Pairing || m_PinDone) {
             return;
         }
-        m_PinDone = true;
+
+        bool ok = false;
+        QString errorText = tr("ПК отклонил PIN");
 
         if (reply->error() != QNetworkReply::NoError) {
-            m_PinOk = false;
-            fail(tr("Не удалось авторизовать PIN (сеть)"));
+            errorText = tr("Не удалось авторизовать PIN (сеть)");
+        }
+        else {
+            const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+            if (doc.isObject()) {
+                ok = doc.object().value(QStringLiteral("status")).toBool();
+                const QString serverError = doc.object().value(QStringLiteral("error")).toString();
+                if (!serverError.isEmpty()) {
+                    errorText = serverError;
+                }
+            }
+        }
+
+        if (ok) {
+            m_PinDone = true;
+            m_PinOk = true;
+            checkFinished();
             return;
         }
 
-        const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-        m_PinOk = doc.isObject() && doc.object().value(QStringLiteral("status")).toBool();
-        if (!m_PinOk) {
-            fail(doc.isObject()
-                     ? doc.object().value(QStringLiteral("error")).toString(tr("ПК отклонил PIN"))
-                     : tr("ПК отклонил PIN"));
+        // The host may not have registered the pairing session yet (or is still
+        // processing) — retry a few times before giving up.
+        if (m_PinAttempts < 6) {
+            qInfo() << "PIN relay attempt" << m_PinAttempts << "failed, retrying:" << errorText;
+            QTimer::singleShot(1000, this, &LegionConnect::submitPin);
             return;
         }
 
-        checkFinished();
+        m_PinDone = true;
+        m_PinOk = false;
+        fail(errorText);
     });
 }
 

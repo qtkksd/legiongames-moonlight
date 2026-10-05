@@ -68,5 +68,6 @@ private:
     bool m_PairingOk;
     bool m_PinDone;
     bool m_PinOk;
+    int m_PinAttempts;
     int m_AddRetries;
 };
