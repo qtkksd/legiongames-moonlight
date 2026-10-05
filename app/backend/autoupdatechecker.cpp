@@ -170,42 +170,17 @@ void AutoUpdateChecker::handleRequestFinished(QNetworkReply* reply)
     }
 }
 
+// Anything smaller than this is almost certainly an error page, not a build.
+#define MIN_UPDATE_SIZE (1024 * 1024)
+
 void AutoUpdateChecker::installUpdate(const QString& url)
 {
+#if !defined(Q_OS_WIN32) && !defined(APP_IMAGE)
+    QDesktopServices::openUrl(QUrl(url));
+#else
 #if defined(Q_OS_WIN32)
-    qInfo() << "Downloading update installer:" << url;
-
-    QNetworkRequest request{QUrl(url)};
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                         QNetworkRequest::NoLessSafeRedirectPolicy);
-    request.setRawHeader("User-Agent", "LegionGames-Moonlight");
-
-    QNetworkReply* reply = m_Nam->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
-        reply->deleteLater();
-
-        if (reply->error() != QNetworkReply::NoError) {
-            qWarning() << "Installer download failed:" << reply->errorString();
-            QDesktopServices::openUrl(QUrl(url));
-            return;
-        }
-
-        const QString path = QDir(QDir::tempPath()).filePath(QStringLiteral("MoonlightSetup.exe"));
-        QFile file(path);
-        if (!file.open(QIODevice::WriteOnly)) {
-            qWarning() << "Failed to open installer path for writing:" << path;
-            QDesktopServices::openUrl(QUrl(url));
-            return;
-        }
-
-        file.write(reply->readAll());
-        file.close();
-
-        qInfo() << "Launching silent installer:" << path;
-        QProcess::startDetached(path, QStringList() << QStringLiteral("/S"));
-        QCoreApplication::quit();
-    });
-#elif defined(APP_IMAGE)
+    const QString targetPath = QDir(QDir::tempPath()).filePath(QStringLiteral("MoonlightSetup.exe"));
+#else
     // Self-update the running AppImage in place. The AppImage runtime exports
     // the absolute path of the current bundle in $APPIMAGE.
     const QString appImagePath = qEnvironmentVariable("APPIMAGE");
@@ -214,60 +189,75 @@ void AutoUpdateChecker::installUpdate(const QString& url)
         QDesktopServices::openUrl(QUrl(url));
         return;
     }
+    const QString targetPath = appImagePath + QStringLiteral(".new");
+#endif
 
-    qInfo() << "Downloading AppImage update:" << url;
+    qInfo() << "Downloading update to" << targetPath << "from" << url;
 
     QNetworkRequest request{QUrl(url)};
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
 
+    QFile* file = new QFile(targetPath);
+    if (!file->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        qWarning() << "Failed to open update path for writing:" << targetPath;
+        delete file;
+        QDesktopServices::openUrl(QUrl(url));
+        return;
+    }
+
     QNetworkReply* reply = m_Nam->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, url, appImagePath]() {
+
+    // Stream chunks to disk so the UI never blocks on a large download.
+    connect(reply, &QNetworkReply::readyRead, file, [reply, file]() {
+        file->write(reply->readAll());
+    });
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, file, url, targetPath]() {
+        file->close();
+        const qint64 size = file->size();
+        file->deleteLater();
         reply->deleteLater();
 
-        if (reply->error() != QNetworkReply::NoError) {
-            qWarning() << "AppImage download failed:" << reply->errorString();
+        if (reply->error() != QNetworkReply::NoError || size < MIN_UPDATE_SIZE) {
+            qWarning() << "Update download failed or too small:"
+                       << reply->errorString() << "size=" << size;
+            QFile::remove(targetPath);
             QDesktopServices::openUrl(QUrl(url));
             return;
         }
 
-        // Write alongside the current AppImage so the final rename is atomic.
-        const QString newPath = appImagePath + QStringLiteral(".new");
-        QFile file(newPath);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            qWarning() << "Failed to open AppImage path for writing:" << newPath;
-            QDesktopServices::openUrl(QUrl(url));
-            return;
-        }
-
-        file.write(reply->readAll());
-        file.close();
-
-        // Mark the new bundle executable.
-        QFile::setPermissions(newPath,
+#if defined(Q_OS_WIN32)
+        // The Windows installer is a WiX Burn bundle: it accepts /quiet (NOT
+        // the NSIS-style /S), plus /norestart. This still triggers UAC because
+        // the bundle installs per-machine.
+        qInfo() << "Launching silent installer:" << targetPath;
+        QProcess::startDetached(targetPath, QStringList() << QStringLiteral("/quiet")
+                                                          << QStringLiteral("/norestart"));
+        QCoreApplication::quit();
+#else
+        // AppImage: make the new bundle executable, replace the running one,
+        // then relaunch it.
+        QFile::setPermissions(targetPath,
                               QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner |
                               QFile::ReadGroup | QFile::ExeGroup |
                               QFile::ReadOther | QFile::ExeOther);
 
-        // Replace the running AppImage. Unlinking the old file (and renaming the
-        // new one over it) keeps the running inode valid until we exit.
+        const QString appImagePath = qEnvironmentVariable("APPIMAGE");
         if (QFile::exists(appImagePath)) {
             QFile::remove(appImagePath);
         }
-
-        if (!QFile::rename(newPath, appImagePath)) {
+        if (!QFile::rename(targetPath, appImagePath)) {
             qWarning() << "Failed to replace AppImage:" << appImagePath;
             QDesktopServices::openUrl(QUrl(url));
             return;
         }
 
-        // Relaunch the freshly installed AppImage and quit the old process.
         qInfo() << "Relaunching updated AppImage:" << appImagePath;
         QProcess::startDetached(appImagePath, QStringList());
         QCoreApplication::quit();
+#endif
     });
-#else
-    QDesktopServices::openUrl(QUrl(url));
 #endif
 }
