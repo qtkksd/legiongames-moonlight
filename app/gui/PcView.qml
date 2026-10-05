@@ -20,6 +20,20 @@ CenteredGridView {
     cellWidth: 310; cellHeight: 330;
     objectName: qsTr("Computers")
 
+    // Faded LegionGames mark sitting behind the list of PCs
+    Image {
+        id: backgroundLogo
+        source: "qrc:/res/moonlight.svg"
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        opacity: 0.08
+        width: Math.min(pcGrid.width, pcGrid.height) * 0.7
+        height: width
+        x: (pcGrid.width - width) / 2
+        y: (pcGrid.height - height) / 2
+        z: -1
+    }
+
     Component.onCompleted: {
         // Don't show any highlighted item until interacting with them.
         // We do this here instead of onActivated to avoid losing the user's
