@@ -54,7 +54,6 @@ void AutoUpdateChecker::start()
 
 #if defined(Q_OS_WIN32) || defined(Q_OS_DARWIN) || defined(STEAM_LINK) || defined(APP_IMAGE)
     QNetworkRequest request{QUrl(QStringLiteral(LG_RELEASES_API))};
-    request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
     request.setRawHeader("Accept", "application/vnd.github+json");
     m_Nam->get(request);
@@ -82,7 +81,6 @@ void AutoUpdateChecker::checkPkgsFallback()
 
     qInfo() << "Falling back to pkgs version check";
     QNetworkRequest request{QUrl(QStringLiteral(LG_PKGS_VERSION_URL))};
-    request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
     m_Nam->get(request);
 }
@@ -183,7 +181,7 @@ void AutoUpdateChecker::installUpdate(const QString& url)
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
 
     QNetworkReply* reply = m_Nam->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, url]() {
         reply->deleteLater();
 
         if (reply->error() != QNetworkReply::NoError) {
