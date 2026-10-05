@@ -494,6 +494,12 @@ NvHTTP::openConnection(QUrl baseUrl,
         caCerts.append(m_ServerCert);
         sslConfig.setCaCertificates(caCerts);
     }
+
+    // Force TLS 1.2. The Linux AppImage is built against Qt 6.2 + OpenSSL, whose
+    // TLS 1.3 client-certificate handshake with Sunshine's TLS server aborts with
+    // an empty SSL error list (surfaced as "Server certificate mismatch"). TLS
+    // 1.2 works on every platform and Sunshine supports it.
+    sslConfig.setProtocol(QSsl::TlsV1_2);
     request.setSslConfiguration(sslConfig);
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
