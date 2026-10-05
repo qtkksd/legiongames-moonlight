@@ -483,8 +483,18 @@ NvHTTP::openConnection(QUrl baseUrl,
 
     QNetworkRequest request(url);
 
-    // Add our client certificate
-    request.setSslConfiguration(IdentityManager::get()->getSslConfig());
+    // Add our client certificate, and explicitly trust the pinned server
+    // certificate (self-signed) at the TLS layer. Relying solely on
+    // ignoreSslErrors() fails on some OpenSSL/TLS 1.3 setups (notably Linux)
+    // where the handshake aborts with an empty SSL error list, even though the
+    // pinned cert matches.
+    QSslConfiguration sslConfig = IdentityManager::get()->getSslConfig();
+    if (!m_ServerCert.isNull()) {
+        QList<QSslCertificate> caCerts = sslConfig.caCertificates();
+        caCerts.append(m_ServerCert);
+        sslConfig.setCaCertificates(caCerts);
+    }
+    request.setSslConfiguration(sslConfig);
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     // Disable HTTP/2 (GFE 3.22 doesn't like it) and Qt 6 enables it by default
