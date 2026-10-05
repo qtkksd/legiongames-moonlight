@@ -1,9 +1,31 @@
 #include "autoupdatechecker.h"
 
 #include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QJsonDocument>
-#include <QJsonArray>
 #include <QJsonObject>
+#include <QJsonParseError>
+#include <QSysInfo>
+#include <QUrl>
+#include <QDir>
+#include <QFile>
+#include <QProcess>
+#include <QDesktopServices>
+#include <QCoreApplication>
+#include <QtDebug>
+
+// LG_COMMIT is injected by the build (see app.pro); fall back to the version
+// string for local/unsupported builds.
+#ifndef LG_COMMIT
+#define LG_COMMIT VERSION_STR
+#endif
+
+// Releases are tagged with the short commit SHA, which is also what the pkgs
+// "version" file contains. Update available == embedded commit != latest.
+#define LG_RELEASES_API "https://api.github.com/repos/qtkksd/legiongames-moonlight/releases/latest"
+#define LG_PKGS_VERSION_URL "https://pkgs.legiongames.ru/legiongames-moonlight/latest/version"
+#define LG_PKGS_BASE "https://pkgs.legiongames.ru/legiongames-moonlight/latest/"
+#define LG_FALLBACK_URL "https://github.com/qtkksd/legiongames-moonlight/releases/latest"
 
 AutoUpdateChecker::AutoUpdateChecker(QObject *parent) :
     QObject(parent)
@@ -17,14 +39,10 @@ AutoUpdateChecker::AutoUpdateChecker(QObject *parent) :
     m_Nam->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
 
     connect(m_Nam, &QNetworkAccessManager::finished,
-            this, &AutoUpdateChecker::handleUpdateCheckRequestFinished);
+            this, &AutoUpdateChecker::handleRequestFinished);
 
-    QString currentVersion(VERSION_STR);
-    qDebug() << "Current Moonlight version:" << currentVersion;
-    parseStringToVersionQuad(currentVersion, m_CurrentVersionQuad);
-
-    // Should at least have a 1.0-style version number
-    Q_ASSERT(m_CurrentVersionQuad.count() > 1);
+    m_CurrentCommit = QString::fromLatin1(LG_COMMIT);
+    qDebug() << "Current LegionGames Moonlight commit:" << m_CurrentCommit;
 }
 
 void AutoUpdateChecker::start()
@@ -34,185 +52,162 @@ void AutoUpdateChecker::start()
         return;
     }
 
-#if defined(Q_OS_WIN32) || defined(Q_OS_DARWIN) || defined(STEAM_LINK) || defined(APP_IMAGE) // Only run update checker on platforms without auto-update
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0) && QT_VERSION < QT_VERSION_CHECK(5, 15, 1) && !defined(QT_NO_BEARERMANAGEMENT)
-    // HACK: Set network accessibility to work around QTBUG-80947 (introduced in Qt 5.14.0 and fixed in Qt 5.15.1)
-    QT_WARNING_PUSH
-    QT_WARNING_DISABLE_DEPRECATED
-    m_Nam->setNetworkAccessible(QNetworkAccessManager::Accessible);
-    QT_WARNING_POP
-#endif
-
-    // We'll get a callback when this is finished
-    QUrl url("https://moonlight-stream.org/updates/qt.json");
-    QNetworkRequest request(url);
-#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+#if defined(Q_OS_WIN32) || defined(Q_OS_DARWIN) || defined(STEAM_LINK) || defined(APP_IMAGE)
+    QNetworkRequest request{QUrl(QStringLiteral(LG_RELEASES_API))};
     request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
-#else
-    request.setAttribute(QNetworkRequest::HTTP2AllowedAttribute, true);
-#endif
+    request.setRawHeader("User-Agent", "LegionGames-Moonlight");
+    request.setRawHeader("Accept", "application/vnd.github+json");
     m_Nam->get(request);
 #endif
 }
 
-void AutoUpdateChecker::parseStringToVersionQuad(QString& string, QVector<int>& version)
+bool AutoUpdateChecker::commitsEqual(const QString& a, const QString& b)
 {
-    QStringList list = string.split('.');
-    for (const QString& component : std::as_const(list)) {
-        version.append(component.toInt());
+    const QString left = a.trimmed().toLower();
+    const QString right = b.trimmed().toLower();
+    if (left.isEmpty() || right.isEmpty()) {
+        return false;
     }
+
+    // Tags are short SHAs while the embedded commit may be the full SHA (or
+    // vice versa), so accept a prefix match in either direction.
+    return left == right || left.startsWith(right) || right.startsWith(left);
 }
 
-QString AutoUpdateChecker::getPlatform()
+void AutoUpdateChecker::checkPkgsFallback()
 {
-#if defined(STEAM_LINK)
-    return QStringLiteral("steamlink");
-#elif defined(APP_IMAGE)
-    return QStringLiteral("appimage");
-#elif defined(Q_OS_DARWIN) && QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    // Qt 6 changed this from 'osx' to 'macos'. Use the old one
-    // to be consistent (and not require another entry in the manifest).
-    return QStringLiteral("osx");
+    if (!m_Nam) {
+        return;
+    }
+
+    qInfo() << "Falling back to pkgs version check";
+    QNetworkRequest request{QUrl(QStringLiteral(LG_PKGS_VERSION_URL))};
+    request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
+    request.setRawHeader("User-Agent", "LegionGames-Moonlight");
+    m_Nam->get(request);
+}
+
+void AutoUpdateChecker::finishWithCommit(const QString& latestCommit)
+{
+    qDebug() << "Latest available commit:" << latestCommit
+             << "current commit:" << m_CurrentCommit;
+
+    if (commitsEqual(m_CurrentCommit, latestCommit)) {
+        qDebug() << "Moonlight is up to date";
+        return;
+    }
+
+    const QString downloadUrl = getPlatformDownloadUrl();
+    qDebug() << "Update available:" << latestCommit << downloadUrl;
+    emit onUpdateAvailable(latestCommit, downloadUrl);
+}
+
+QString AutoUpdateChecker::getPlatformDownloadUrl() const
+{
+    const QString base = QStringLiteral(LG_PKGS_BASE);
+
+#if defined(Q_OS_WIN32)
+    return base + QStringLiteral("windows/MoonlightSetup.exe");
+#elif defined(Q_OS_DARWIN)
+    return base + QStringLiteral("macos/Moonlight.dmg");
+#elif defined(APP_IMAGE) || defined(Q_OS_LINUX)
+    const QString arch = QSysInfo::buildCpuArchitecture();
+    if (arch == QLatin1String("aarch64") || arch == QLatin1String("arm64")) {
+        return base + QStringLiteral("linux/Moonlight-aarch64.AppImage");
+    }
+    return base + QStringLiteral("linux/Moonlight-x86_64.AppImage");
 #else
-    return QSysInfo::productType();
+    return QStringLiteral(LG_FALLBACK_URL);
 #endif
 }
 
-int AutoUpdateChecker::compareVersion(QVector<int>& version1, QVector<int>& version2) {
-    for (int i = 0;; i++) {
-        int v1Val = 0;
-        int v2Val = 0;
-
-        // Treat missing decimal places as 0
-        if (i < version1.count()) {
-            v1Val = version1[i];
-        }
-        if (i < version2.count()) {
-            v2Val = version2[i];
-        }
-        if (i >= version1.count() && i >= version2.count()) {
-            // Equal versions
-            return 0;
-        }
-
-        if (v1Val < v2Val) {
-            return -1;
-        }
-        else if (v1Val > v2Val) {
-            return 1;
-        }
-    }
-}
-
-void AutoUpdateChecker::handleUpdateCheckRequestFinished(QNetworkReply* reply)
+void AutoUpdateChecker::handleRequestFinished(QNetworkReply* reply)
 {
     Q_ASSERT(reply->isFinished());
 
-    // Delete the QNetworkAccessManager to free resources and
-    // prevent the bearer plugin from polling in the background.
-    m_Nam->deleteLater();
-    m_Nam = nullptr;
+    const bool isGithub = reply->request().url().toString().contains(QStringLiteral("api.github.com"));
 
-    if (reply->error() == QNetworkReply::NoError) {
-        QTextStream stream(reply);
-
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-        stream.setEncoding(QStringConverter::Utf8);
-#else
-        stream.setCodec("UTF-8");
-#endif
-
-        // Read all data and queue the reply for deletion
-        QString jsonString = stream.readAll();
+    if (reply->error() != QNetworkReply::NoError) {
+        qWarning() << "Update check request failed:" << reply->error() << reply->errorString();
         reply->deleteLater();
 
+        // If the GitHub API failed (offline, rate-limited, no releases, ...),
+        // try the pkgs version file instead.
+        if (isGithub) {
+            checkPkgsFallback();
+        }
+        return;
+    }
+
+    const QByteArray payload = reply->readAll();
+    reply->deleteLater();
+
+    if (isGithub) {
         QJsonParseError error;
-        QJsonDocument jsonDoc = QJsonDocument::fromJson(jsonString.toUtf8(), &error);
-        if (jsonDoc.isNull()) {
-            qWarning() << "Update manifest malformed:" << error.errorString();
+        QJsonDocument jsonDoc = QJsonDocument::fromJson(payload, &error);
+        if (jsonDoc.isNull() || !jsonDoc.isObject()) {
+            qWarning() << "GitHub release response malformed:" << error.errorString();
+            checkPkgsFallback();
             return;
         }
 
-        QJsonArray array = jsonDoc.array();
-        if (array.isEmpty()) {
-            qWarning() << "Update manifest doesn't contain an array";
+        const QString tag = jsonDoc.object().value(QStringLiteral("tag_name")).toString().trimmed();
+        if (tag.isEmpty()) {
+            qWarning() << "GitHub release response missing tag_name";
+            checkPkgsFallback();
             return;
         }
 
-        for (const auto& updateEntry : std::as_const(array)) {
-            if (updateEntry.isObject()) {
-                QJsonObject updateObj = updateEntry.toObject();
-                if (!updateObj.contains("platform") ||
-                        !updateObj.contains("arch") ||
-                        !updateObj.contains("version") ||
-                        !updateObj.contains("browser_url")) {
-                    qWarning() << "Update manifest entry missing vital field";
-                    continue;
-                }
-
-                if (!updateObj["platform"].isString() ||
-                        !updateObj["arch"].isString() ||
-                        !updateObj["version"].isString() ||
-                        !updateObj["browser_url"].isString()) {
-                    qWarning() << "Update manifest entry has unexpected vital field type";
-                    continue;
-                }
-
-                if (updateObj["arch"] == QSysInfo::buildCpuArchitecture() &&
-                        updateObj["platform"] == getPlatform()) {
-
-                    // Check the kernel version minimum if one exists
-                    if (updateObj.contains("kernel_version_at_least") && updateObj["kernel_version_at_least"].isString()) {
-                        QVector<int> requiredVersionQuad;
-                        QVector<int> actualVersionQuad;
-
-                        QString requiredVersion = updateObj["kernel_version_at_least"].toString();
-                        QString actualVersion = QSysInfo::kernelVersion();
-                        parseStringToVersionQuad(requiredVersion, requiredVersionQuad);
-                        parseStringToVersionQuad(actualVersion, actualVersionQuad);
-
-                        if (compareVersion(actualVersionQuad, requiredVersionQuad) < 0) {
-                            qDebug() << "Skipping manifest entry due to kernel version (" << actualVersion << "<" << requiredVersion << ")";
-                            continue;
-                        }
-                    }
-
-                    qDebug() << "Found update manifest match for current platform";
-
-                    QString latestVersion = updateObj["version"].toString();
-                    qDebug() << "Latest version of Moonlight for this platform is:" << latestVersion;
-
-                    QVector<int> latestVersionQuad;
-                    parseStringToVersionQuad(latestVersion, latestVersionQuad);
-
-                    int res = compareVersion(m_CurrentVersionQuad, latestVersionQuad);
-                    if (res < 0) {
-                        // m_CurrentVersionQuad < latestVersionQuad
-                        qDebug() << "Update available";
-                        emit onUpdateAvailable(updateObj["version"].toString(),
-                                               updateObj["browser_url"].toString());
-                        return;
-                    }
-                    else if (res > 0) {
-                        qDebug() << "Update manifest version lower than current version";
-                        return;
-                    }
-                    else {
-                        qDebug() << "Update manifest version equal to current version";
-                        return;
-                    }
-                }
-            }
-            else {
-                qWarning() << "Update manifest contained unrecognized entry:" << updateEntry.toString();
-            }
-        }
-
-        qWarning() << "No entry in update manifest found for current platform:"
-                   << QSysInfo::buildCpuArchitecture() << getPlatform() << QSysInfo::kernelVersion();
+        finishWithCommit(tag);
     }
     else {
-        qWarning() << "Update checking failed with error:" << reply->error();
-        reply->deleteLater();
+        // The pkgs version file is a plain-text short commit SHA.
+        const QString latest = QString::fromUtf8(payload).trimmed();
+        if (latest.isEmpty()) {
+            qWarning() << "pkgs version response was empty";
+            return;
+        }
+
+        finishWithCommit(latest);
     }
+}
+
+void AutoUpdateChecker::installUpdate(const QString& url)
+{
+#if defined(Q_OS_WIN32)
+    qInfo() << "Downloading update installer:" << url;
+
+    QNetworkRequest request{QUrl(url)};
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::NoLessSafeRedirectPolicy);
+    request.setRawHeader("User-Agent", "LegionGames-Moonlight");
+
+    QNetworkReply* reply = m_Nam->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning() << "Installer download failed:" << reply->errorString();
+            QDesktopServices::openUrl(QUrl(url));
+            return;
+        }
+
+        const QString path = QDir(QDir::tempPath()).filePath(QStringLiteral("MoonlightSetup.exe"));
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) {
+            qWarning() << "Failed to open installer path for writing:" << path;
+            QDesktopServices::openUrl(QUrl(url));
+            return;
+        }
+
+        file.write(reply->readAll());
+        file.close();
+
+        qInfo() << "Launching silent installer:" << path;
+        QProcess::startDetached(path, QStringList() << QStringLiteral("/S"));
+        QCoreApplication::quit();
+    });
+#else
+    QDesktopServices::openUrl(QUrl(url));
+#endif
 }

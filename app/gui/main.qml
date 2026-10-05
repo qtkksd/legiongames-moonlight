@@ -342,9 +342,7 @@ ApplicationWindow {
                 visible: false
 
                 onClicked: {
-                    if (SystemProperties.hasBrowser) {
-                        Qt.openUrlExternally(browserUrl);
-                    }
+                    updateDialog.open()
                 }
 
                 function updateAvailable(version, url)
@@ -352,6 +350,7 @@ ApplicationWindow {
                     ToolTip.text = qsTr("Update available for Moonlight: Version %1").arg(version)
                     updateButton.browserUrl = url
                     updateButton.visible = true
+                    updateDialog.open()
                 }
 
                 Component.onCompleted: {
@@ -439,6 +438,17 @@ ApplicationWindow {
         helpTextSeparator: "\n\n"
         helpText: qsTr("Click the Help button for information on how to map your gamepads.")
         helpUrl: "https://github.com/moonlight-stream/moonlight-docs/wiki/Gamepad-Mapping"
+    }
+
+    // This dialog appears when an update is available and asks the user
+    // whether to install it now.
+    NavigableMessageDialog {
+        id: updateDialog
+        standardButtons: Dialog.Yes | Dialog.No
+        text: qsTr("A Moonlight update is available. Install it now?")
+        onAccepted: {
+            AutoUpdateChecker.installUpdate(updateButton.browserUrl)
+        }
     }
 
     // This dialog appears when quitting via keyboard or gamepad button

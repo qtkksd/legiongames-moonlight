@@ -571,6 +571,15 @@ macx {
 VERSION = "$$cat(version.txt)"
 DEFINES += VERSION_STR=\\\"$$cat(version.txt)\\\"
 
+# Embed the git commit (passed by CI as the COMMIT environment variable) so the
+# client can compare itself against the latest release/pkgs commit. Local builds
+# fall back to the version string.
+LG_COMMIT = $$(COMMIT)
+isEmpty(LG_COMMIT) {
+    LG_COMMIT = "$$cat(version.txt)"
+}
+DEFINES += LG_COMMIT=\\\"$$LG_COMMIT\\\"
+
 # moonlight-mic debug A/B capture instrumentation.
 # Enabled at qmake time with: qmake CONFIG+=debug-mic-ab-capture
 # When the CONFIG flag is absent (the default), DEBUG_MIC_AB_CAPTURE is not
