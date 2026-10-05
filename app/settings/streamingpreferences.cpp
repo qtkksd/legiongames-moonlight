@@ -5,6 +5,8 @@
 #include <QSettings>
 #include <QTranslator>
 #include <QCoreApplication>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QLocale>
 #include <QReadWriteLock>
 #include <QtMath>
@@ -55,9 +57,39 @@
 #define SER_STREAMMIC "streammic"
 #define SER_MIC_CAPTURE_DEVICE "miccapturedevice"
 
-#define CURRENT_DEFAULT_VER 2
+#define CURRENT_DEFAULT_VER 3
 
 static StreamingPreferences* s_GlobalPrefs;
+
+// Best-effort detection of the client's native display resolution and refresh
+// rate, used as the default stream settings on a fresh install.
+static void getNativeDisplayDefaults(int& w, int& h, int& f)
+{
+    w = 1280;
+    h = 720;
+    f = 60;
+
+    QGuiApplication* guiApp = qobject_cast<QGuiApplication*>(QCoreApplication::instance());
+    if (guiApp == nullptr) {
+        return;
+    }
+
+    QScreen* screen = guiApp->primaryScreen();
+    if (screen == nullptr) {
+        return;
+    }
+
+    const QSize size = screen->size();
+    if (size.isValid() && size.width() > 0 && size.height() > 0) {
+        w = size.width();
+        h = size.height();
+    }
+
+    const int refreshRate = qRound(screen->refreshRate());
+    if (refreshRate >= 24 && refreshRate <= 480) {
+        f = refreshRate;
+    }
+}
 
 Q_GLOBAL_STATIC(QReadWriteLock, s_GlobalPrefsLock)
 
@@ -124,9 +156,11 @@ void StreamingPreferences::reload()
     }
 #endif
 
-    width = settings.value(SER_WIDTH, 1280).toInt();
-    height = settings.value(SER_HEIGHT, 720).toInt();
-    fps = settings.value(SER_FPS, 60).toInt();
+    int nativeWidth, nativeHeight, nativeFps;
+    getNativeDisplayDefaults(nativeWidth, nativeHeight, nativeFps);
+    width = settings.value(SER_WIDTH, nativeWidth).toInt();
+    height = settings.value(SER_HEIGHT, nativeHeight).toInt();
+    fps = settings.value(SER_FPS, nativeFps).toInt();
     enableYUV444 = settings.value(SER_YUV444, false).toBool();
     bitrateKbps = settings.value(SER_BITRATE, getDefaultBitrate(width, height, fps, enableYUV444)).toInt();
     unlockBitrate = settings.value(SER_UNLOCK_BITRATE, false).toBool();
@@ -142,7 +176,7 @@ void StreamingPreferences::reload()
     framePacing = settings.value(SER_FRAMEPACING, false).toBool();
     connectionWarnings = settings.value(SER_CONNWARNINGS, true).toBool();
     configurationWarnings = settings.value(SER_CONFWARNINGS, true).toBool();
-    richPresence = settings.value(SER_RICHPRESENCE, true).toBool();
+    richPresence = settings.value(SER_RICHPRESENCE, false).toBool();
     gamepadMouse = settings.value(SER_GAMEPADMOUSE, true).toBool();
     detectNetworkBlocking = settings.value(SER_DETECTNETBLOCKING, true).toBool();
     showPerformanceOverlay = settings.value(SER_SHOWPERFOVERLAY, false).toBool();
@@ -172,7 +206,7 @@ void StreamingPreferences::reload()
                                                static_cast<int>(settings.value(SER_STARTWINDOWED, true).toBool() ? UIDisplayMode::UI_WINDOWED
                                                                                                                  : UIDisplayMode::UI_MAXIMIZED)).toInt());
     language = static_cast<Language>(settings.value(SER_LANGUAGE,
-                                                    static_cast<int>(Language::LANG_AUTO)).toInt());
+                                                    static_cast<int>(Language::LANG_RU)).toInt());
 
 
     // Perform default settings updates as required based on last default version
@@ -188,6 +222,11 @@ void StreamingPreferences::reload()
         if (windowMode == WindowMode::WM_FULLSCREEN && WMUtils::isRunningWayland()) {
             windowMode = WindowMode::WM_FULLSCREEN_DESKTOP;
         }
+    }
+    if (defaultVer < 3) {
+        // LegionGames branding defaults
+        language = Language::LANG_RU;
+        richPresence = false;
     }
 
     // Fixup VCC value to the new settings format with codec and HDR separate
