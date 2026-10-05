@@ -10,6 +10,7 @@
 #include <QThreadPool>
 #include <QCoreApplication>
 #include <QRandomGenerator>
+#include <QAbstractSocket>
 
 #define SER_HOSTS "hosts"
 #define SER_HOSTS_BACKUP "hostsbackup"
@@ -417,19 +418,28 @@ void ComputerManager::startPollingComputer(NvComputer* computer)
     }
 }
 
+// LegionGames: club hosts are reachable over the NetBird overlay (100.116.0.0/16).
+// mDNS discovery is intentionally scoped to that subnet instead of the LAN.
+static bool isNetbirdSubnetAddress(const QHostAddress& address)
+{
+    if (address.protocol() != QAbstractSocket::IPv4Protocol) {
+        return false;
+    }
+
+    // 100.116.0.0/16
+    return (address.toIPv4Address() & 0xFFFF0000u) == 0x64740000u;
+}
+
 void ComputerManager::handleMdnsServiceResolved(MdnsPendingComputer* computer,
                                                 QVector<QHostAddress>& addresses)
 {
     QHostAddress v6Global = getBestGlobalAddressV6(addresses);
     bool added = false;
 
-    // Add the host using the IPv4 address
+    // Add the host using its NetBird IPv4 address. Hosts discovered outside the
+    // NetBird subnet are ignored so we only surface club PCs.
     for (const QHostAddress& address : std::as_const(addresses)) {
-        if (address.protocol() == QAbstractSocket::IPv4Protocol) {
-            // NB: We don't just call addNewHost() here with v6Global because the IPv6
-            // address may not be reachable (if the user hasn't installed the IPv6 helper yet
-            // or if this host lacks outbound IPv6 capability). We want to add IPv6 even if
-            // it's not currently reachable.
+        if (isNetbirdSubnetAddress(address)) {
             addNewHost(NvAddress(address, computer->port()),
                        true, computer->hostname(),
                        NvAddress(v6Global, computer->port()));
@@ -439,20 +449,8 @@ void ComputerManager::handleMdnsServiceResolved(MdnsPendingComputer* computer,
     }
 
     if (!added) {
-        // If we get here, there wasn't an IPv4 address so we'll do it v6-only
-        for (const QHostAddress& address : std::as_const(addresses)) {
-            if (address.protocol() == QAbstractSocket::IPv6Protocol) {
-                // Use a link-local or site-local address for the "local address"
-                if (address.isInSubnet(QHostAddress("fe80::"), 10) ||
-                        address.isInSubnet(QHostAddress("fec0::"), 10) ||
-                        address.isInSubnet(QHostAddress("fc00::"), 7)) {
-                    addNewHost(NvAddress(address, computer->port()),
-                               true, computer->hostname(),
-                               NvAddress(v6Global, computer->port()));
-                    break;
-                }
-            }
-        }
+        qInfo() << "Ignoring mDNS host" << computer->hostname()
+                << "which has no address on the NetBird subnet";
     }
 
     m_PendingResolution.removeOne(computer);

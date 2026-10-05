@@ -30,6 +30,7 @@
 #  include <sys/socket.h>
 #endif
 
+#include <QAbstractSocket>
 #include <QHostAddress>
 #include <QNetworkInterface>
 
@@ -99,7 +100,22 @@ void ServerPrivate::onTimeout()
 
     if (ipv4Bound || ipv6Bound) {
         foreach (QNetworkInterface interface, QNetworkInterface::allInterfaces()) {
-            if (interface.flags() & QNetworkInterface::CanMulticast) {
+            bool canMulticast = interface.flags() & QNetworkInterface::CanMulticast;
+
+            // LegionGames: the NetBird overlay interface (100.116.0.0/16) may not
+            // advertise the multicast capability flag, but we still want mDNS to
+            // run over it so club hosts can be discovered on that subnet.
+            if (!canMulticast) {
+                foreach (const QNetworkAddressEntry &entry, interface.addressEntries()) {
+                    if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol &&
+                            (entry.ip().toIPv4Address() & 0xFFFF0000u) == 0x64740000u) {
+                        canMulticast = true;
+                        break;
+                    }
+                }
+            }
+
+            if (canMulticast) {
                 if (ipv4Bound) {
                     ipv4Socket.joinMulticastGroup(MdnsIpv4Address, interface);
                 }
