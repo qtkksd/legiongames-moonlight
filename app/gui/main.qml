@@ -301,6 +301,28 @@ ApplicationWindow {
             }
 
             NavigableToolButton {
+                id: connectCodeButton
+                visible: stackView.currentItem instanceof PcView
+
+                iconSource: "qrc:/res/baseline-lock-24px.svg"
+
+                ToolTip.delay: 1000
+                ToolTip.timeout: 3000
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Подключение по коду")
+
+                onClicked: {
+                    if (stackView.currentItem && stackView.currentItem.openConnectDialog) {
+                        stackView.currentItem.openConnectDialog()
+                    }
+                }
+
+                Keys.onDownPressed: {
+                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                }
+            }
+
+            NavigableToolButton {
                 id: addPcButton
                 visible: stackView.currentItem instanceof PcView
 

@@ -20,6 +20,7 @@
 
 class ComputerManager;
 class NetbirdDiscovery;
+class LegionConnect;
 
 class DelayedFlushThread : public QThread
 {
@@ -228,6 +229,9 @@ public:
 
     Q_INVOKABLE void addNewHostManually(QString address);
 
+    // LegionGames one-time-code connect flow
+    Q_INVOKABLE void startLegionConnect(QString code);
+
     void addNewHost(NvAddress address, bool mdns, QString name = QString(), NvAddress mdnsIpv6Address = NvAddress());
 
     QString generatePinString();
@@ -253,6 +257,12 @@ signals:
     void computerAddCompleted(QVariant success, QVariant detectedPortBlocking);
 
     void quitAppCompleted(QVariant error);
+
+    void legionConnectStatus(QString message);
+
+    void legionConnectFailed(QString error);
+
+    void legionConnectSucceeded();
 
 private slots:
     void handleAboutToQuit();
@@ -280,6 +290,7 @@ private:
     QMdnsEngine::Browser* m_MdnsBrowser;
     QVector<MdnsPendingComputer*> m_PendingResolution;
     NetbirdDiscovery* m_NetbirdDiscovery;
+    LegionConnect* m_LegionConnect;
     CompatFetcher m_CompatFetcher;
     DelayedFlushThread* m_DelayedFlushThread;
     QMutex m_DelayedFlushMutex; // Lock ordering: Must never be acquired while holding NvComputer lock

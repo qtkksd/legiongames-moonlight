@@ -97,25 +97,40 @@ CenteredGridView {
         return model
     }
 
-    Row {
+    function openConnectDialog()
+    {
+        connectCodeDialog.open()
+    }
+
+    Column {
         anchors.centerIn: parent
-        spacing: 5
+        spacing: 20
         visible: pcGrid.count === 0
 
-        BusyIndicator {
-            id: searchSpinner
-            visible: StreamingPreferences.enableMdns
-            running: visible
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 5
+
+            BusyIndicator {
+                id: searchSpinner
+                visible: StreamingPreferences.enableMdns
+                running: visible
+            }
+
+            Label {
+                height: searchSpinner.height
+                elide: Label.ElideRight
+                text: qsTr("Поиск ПК на вашей сети...")
+                font.pointSize: 20
+                verticalAlignment: Text.AlignVCenter
+                wrapMode: Text.Wrap
+            }
         }
 
-        Label {
-            height: searchSpinner.height
-            elide: Label.ElideRight
-            text: StreamingPreferences.enableMdns ? qsTr("Searching for compatible hosts on your local network...")
-                                                  : qsTr("Automatic PC discovery is disabled. Add your PC manually.")
-            font.pointSize: 20
-            verticalAlignment: Text.AlignVCenter
-            wrapMode: Text.Wrap
+        Button {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: qsTr("Ввести код подключения")
+            onClicked: pcGrid.openConnectDialog()
         }
     }
 
@@ -413,6 +428,78 @@ CenteredGridView {
         text: showPcDetailsDialog.pcDetails
         imageSrc: "qrc:/res/baseline-help_outline-24px.svg"
         standardButtons: Dialog.Ok
+    }
+
+    // LegionGames one-time-code connect flow
+    NavigableDialog {
+        id: connectCodeDialog
+
+        property bool connecting: false
+
+        title: qsTr("Подключение по коду")
+        standardButtons: connecting ? Dialog.NoButton : (Dialog.Ok | Dialog.Cancel)
+        closePolicy: connecting ? Popup.NoAutoClose : Popup.CloseOnEscape
+
+        onOpened: {
+            connectCodeField.text = ""
+            connectCodeStatus.text = ""
+            connectCodeStatus.color = "#f0a500"
+            connecting = false
+            connectCodeField.forceActiveFocus()
+        }
+
+        onAccepted: {
+            if (connectCodeField.text.length > 0) {
+                connecting = true
+                connectCodeStatus.color = "#f0a500"
+                connectCodeStatus.text = qsTr("Проверка кода...")
+                ComputerManager.startLegionConnect(connectCodeField.text)
+            }
+        }
+
+        ColumnLayout {
+            spacing: 8
+
+            Label {
+                text: qsTr("Введите код подключения с сайта LegionGames:")
+                font.bold: true
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+
+            TextField {
+                id: connectCodeField
+                Layout.fillWidth: true
+                focus: true
+                enabled: !connectCodeDialog.connecting
+                Keys.onReturnPressed: connectCodeDialog.accept()
+                Keys.onEnterPressed: connectCodeDialog.accept()
+            }
+
+            Label {
+                id: connectCodeStatus
+                color: "#f0a500"
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+            }
+        }
+
+        Connections {
+            target: ComputerManager
+
+            onLegionConnectStatus: connectCodeStatus.text = message
+
+            onLegionConnectFailed: {
+                connectCodeDialog.connecting = false
+                connectCodeStatus.color = "#c92a2a"
+                connectCodeStatus.text = error
+            }
+
+            onLegionConnectSucceeded: {
+                connectCodeDialog.connecting = false
+                connectCodeDialog.close()
+            }
+        }
     }
 
     ScrollBar.vertical: ScrollBar {}

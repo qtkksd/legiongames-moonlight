@@ -3,6 +3,7 @@
 #include "nvhttp.h"
 #include "nvpairingmanager.h"
 #include "netbirddiscovery.h"
+#include "legionconnect.h"
 
 #include <Limelight.h>
 #include <QtEndian>
@@ -166,6 +167,7 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
       m_PollingRef(0),
       m_MdnsBrowser(nullptr),
       m_NetbirdDiscovery(nullptr),
+      m_LegionConnect(nullptr),
       m_CompatFetcher(nullptr),
       m_NeedsDelayedFlush(false)
 {
@@ -194,6 +196,12 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
 
     // Discovers club hosts on the NetBird overlay (unicast, unlike mDNS)
     m_NetbirdDiscovery = new NetbirdDiscovery(this);
+
+    // One-time-code connect flow (NetBird enrollment + auto add + pairing)
+    m_LegionConnect = new LegionConnect(this, this);
+    connect(m_LegionConnect, &LegionConnect::status, this, &ComputerManager::legionConnectStatus);
+    connect(m_LegionConnect, &LegionConnect::failed, this, &ComputerManager::legionConnectFailed);
+    connect(m_LegionConnect, &LegionConnect::succeeded, this, &ComputerManager::legionConnectSucceeded);
 
     // Start the delayed flush thread to handle saveHosts() calls
     m_DelayedFlushThread = new DelayedFlushThread(this);
@@ -715,6 +723,11 @@ void ComputerManager::quitRunningApp(NvComputer* computer)
 
     PendingQuitTask* quit = new PendingQuitTask(this, computer);
     QThreadPool::globalInstance()->start(quit);
+}
+
+void ComputerManager::startLegionConnect(QString code)
+{
+    m_LegionConnect->start(code);
 }
 
 void ComputerManager::stopPollingAsync()
