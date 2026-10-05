@@ -188,11 +188,9 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         return;
     }
 
-    // Check for our special key combos
-    if ((event->state == SDL_PRESSED) &&
-            (event->keysym.mod & KMOD_CTRL) &&
-            (event->keysym.mod & KMOD_ALT) &&
-            (event->keysym.mod & KMOD_SHIFT)) {
+    // Check for our special key combos. Each combo carries its own modifier
+    // mask, so users can rebind any of them (defaults remain Ctrl+Alt+Shift+key).
+    if (event->state == SDL_PRESSED) {
         // First we test the SDLK combos for matches,
         // that way we ensure that latin keyboard users
         // can match to the key they see on their keyboards.
@@ -205,14 +203,18 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         // the scancode of another.
 
         for (int i = 0; i < KeyComboMax; i++) {
-            if (m_SpecialKeyCombos[i].enabled && event->keysym.sym == m_SpecialKeyCombos[i].keyCode) {
+            if (m_SpecialKeyCombos[i].enabled &&
+                    (event->keysym.mod & m_SpecialKeyCombos[i].mod) == m_SpecialKeyCombos[i].mod &&
+                    event->keysym.sym == m_SpecialKeyCombos[i].keyCode) {
                 performSpecialKeyCombo(m_SpecialKeyCombos[i].keyCombo);
                 return;
             }
         }
 
         for (int i = 0; i < KeyComboMax; i++) {
-            if (m_SpecialKeyCombos[i].enabled && event->keysym.scancode == m_SpecialKeyCombos[i].scanCode) {
+            if (m_SpecialKeyCombos[i].enabled &&
+                    (event->keysym.mod & m_SpecialKeyCombos[i].mod) == m_SpecialKeyCombos[i].mod &&
+                    event->keysym.scancode == m_SpecialKeyCombos[i].scanCode) {
                 performSpecialKeyCombo(m_SpecialKeyCombos[i].keyCombo);
                 return;
             }
