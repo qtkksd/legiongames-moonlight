@@ -445,7 +445,7 @@ ApplicationWindow {
     NavigableMessageDialog {
         id: updateDialog
         standardButtons: Dialog.Yes | Dialog.No
-        text: qsTr("A Moonlight update is available. Install it now?")
+        text: qsTr("Доступно обновление Moonlight. Установить сейчас?")
         onAccepted: {
             AutoUpdateChecker.installUpdate(updateButton.browserUrl)
         }

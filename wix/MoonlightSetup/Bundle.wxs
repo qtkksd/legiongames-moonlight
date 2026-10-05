@@ -15,8 +15,8 @@
           Version="!(bind.PackageVersion.Moonlight_x64)"
           Manufacturer="Moonlight Game Streaming Project"
           UpgradeCode="466fa35d-4be4-40ef-9ce5-afadc3b63bc5"
-          HelpUrl="https://github.com/moonlight-stream/moonlight-docs/wiki/Setup-Guide"
-          UpdateUrl="https://github.com/moonlight-stream/moonlight-qt/releases"
+          HelpUrl="https://legiongames.ru"
+          UpdateUrl="https://github.com/qtkksd/legiongames-moonlight/releases"
           DisableModify="yes"
           IconSourceFile="..\..\app\moonlight.ico">
 

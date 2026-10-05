@@ -20,14 +20,14 @@
 		</ul>
 	</description>
 
-	<url type="homepage">https://moonlight-stream.org</url>
-	<url type="bugtracker">https://github.com/moonlight-stream/moonlight-qt/issues</url>
-	<url type="help">https://github.com/moonlight-stream/moonlight-docs/wiki/Setup-Guide</url>
-	<url type="vcs-browser">https://github.com/moonlight-stream/moonlight-qt</url>
-	<developer id="org.moonlight-stream">
-		<name>Moonlight Game Streaming Team</name>
+	<url type="homepage">https://legiongames.ru</url>
+	<url type="bugtracker">https://github.com/qtkksd/legiongames-moonlight/issues</url>
+	<url type="help">https://legiongames.ru</url>
+	<url type="vcs-browser">https://github.com/qtkksd/legiongames-moonlight</url>
+	<developer id="ru.legiongames">
+		<name>LegionGames</name>
 	</developer>
-	<update_contact>cameron@moonlight-stream.org</update_contact>
+	<update_contact>support@legiongames.ru</update_contact>
 	<launchable type="desktop-id">com.moonlight_stream.Moonlight.desktop</launchable>
 	<provides>
 		<binary>moonlight</binary>
@@ -35,8 +35,8 @@
 	<content_rating type="oars-1.1" />	
 
 	<branding>
-		<color type="primary" scheme_preference="light">#710085</color>
-		<color type="primary" scheme_preference="dark">#55285d</color>
+		<color type="primary" scheme_preference="light">#c92a2a</color>
+		<color type="primary" scheme_preference="dark">#a01f1f</color>
 	</branding>
 
 	<screenshots>
