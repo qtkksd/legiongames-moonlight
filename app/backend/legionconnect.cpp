@@ -37,6 +37,10 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
 
     connect(m_Process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
+        if (m_Stage == Idle) {
+            return;
+        }
+
         if (m_Stage == NetbirdDown) {
             // Ignore the result of "down" (may fail if not connected) and go up.
             runNetbird(QStringList() << QStringLiteral("up")
@@ -59,7 +63,13 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
         }
     });
 
-    connect(m_Process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+    connect(m_Process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        // Ignore errors after we've already finished/failed (e.g. the kill() we
+        // issue in fail() can emit Crashed).
+        if (m_Stage == Idle) {
+            return;
+        }
+        qWarning() << "NetBird process error:" << error;
         fail(tr("Не удалось запустить NetBird. Убедитесь, что он установлен."));
     });
 
@@ -272,6 +282,13 @@ void LegionConnect::checkFinished()
 
 void LegionConnect::fail(const QString& error)
 {
+    // Only surface the first error; later callbacks from a killed process are ignored.
+    if (m_Stage == Idle) {
+        return;
+    }
+
+    qWarning() << "LegionConnect failed:" << error;
+
     m_Stage = Idle;
     if (m_Process->state() != QProcess::NotRunning) {
         m_Process->kill();
