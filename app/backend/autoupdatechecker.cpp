@@ -205,6 +205,68 @@ void AutoUpdateChecker::installUpdate(const QString& url)
         QProcess::startDetached(path, QStringList() << QStringLiteral("/S"));
         QCoreApplication::quit();
     });
+#elif defined(APP_IMAGE)
+    // Self-update the running AppImage in place. The AppImage runtime exports
+    // the absolute path of the current bundle in $APPIMAGE.
+    const QString appImagePath = qEnvironmentVariable("APPIMAGE");
+    if (appImagePath.isEmpty() || !QFile::exists(appImagePath)) {
+        qWarning() << "APPIMAGE env var not set; falling back to browser download";
+        QDesktopServices::openUrl(QUrl(url));
+        return;
+    }
+
+    qInfo() << "Downloading AppImage update:" << url;
+
+    QNetworkRequest request{QUrl(url)};
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::NoLessSafeRedirectPolicy);
+    request.setRawHeader("User-Agent", "LegionGames-Moonlight");
+
+    QNetworkReply* reply = m_Nam->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, url, appImagePath]() {
+        reply->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning() << "AppImage download failed:" << reply->errorString();
+            QDesktopServices::openUrl(QUrl(url));
+            return;
+        }
+
+        // Write alongside the current AppImage so the final rename is atomic.
+        const QString newPath = appImagePath + QStringLiteral(".new");
+        QFile file(newPath);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            qWarning() << "Failed to open AppImage path for writing:" << newPath;
+            QDesktopServices::openUrl(QUrl(url));
+            return;
+        }
+
+        file.write(reply->readAll());
+        file.close();
+
+        // Mark the new bundle executable.
+        QFile::setPermissions(newPath,
+                              QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner |
+                              QFile::ReadGroup | QFile::ExeGroup |
+                              QFile::ReadOther | QFile::ExeOther);
+
+        // Replace the running AppImage. Unlinking the old file (and renaming the
+        // new one over it) keeps the running inode valid until we exit.
+        if (QFile::exists(appImagePath)) {
+            QFile::remove(appImagePath);
+        }
+
+        if (!QFile::rename(newPath, appImagePath)) {
+            qWarning() << "Failed to replace AppImage:" << appImagePath;
+            QDesktopServices::openUrl(QUrl(url));
+            return;
+        }
+
+        // Relaunch the freshly installed AppImage and quit the old process.
+        qInfo() << "Relaunching updated AppImage:" << appImagePath;
+        QProcess::startDetached(appImagePath, QStringList());
+        QCoreApplication::quit();
+    });
 #else
     QDesktopServices::openUrl(QUrl(url));
 #endif
