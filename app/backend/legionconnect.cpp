@@ -12,6 +12,7 @@
 #include <QNetworkRequest>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QUrl>
 #include <QtDebug>
 
@@ -19,6 +20,10 @@
 #define LEGION_CONNECT_URL LEGION_API_BASE "/api/client/connect"
 #define LEGION_PIN_URL LEGION_API_BASE "/api/client/pin"
 #define LEGION_DEFAULT_MANAGEMENT_URL "https://netbird.legiongames.ru"
+
+// Dedicated NetBird profile used for the session so the user's own NetBird
+// login (the "default" profile) is never modified.
+#define LEGION_PROFILE_NAME "legiongames"
 
 LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
     QObject(parent),
@@ -31,7 +36,11 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
     m_PinDone(false),
     m_PinOk(false),
     m_PinAttempts(0),
-    m_AddRetries(0)
+    m_AddRetries(0),
+    m_Cleaning(false),
+    m_NetbirdTouched(false),
+    m_StaleProfileActive(false),
+    m_RemoveIndex(0)
 {
     // Allow HTTP redirects (e.g. https://legiongames.ru -> www)
     m_Nam->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
@@ -42,14 +51,48 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
             return;
         }
 
-        if (m_Stage == NetbirdDown) {
-            // Ignore the result of "down" (may fail if not connected) and go up.
+        const QByteArray out = m_Process->readAllStandardOutput();
+
+        switch (m_Stage) {
+        case NetbirdDown:
+            // Ignore the result of "down" (may fail if not connected) and list
+            // the profiles so we can remove any stale "legiongames" ones.
+            runNetbird(QStringList() << QStringLiteral("profile")
+                                     << QStringLiteral("list")
+                                     << QStringLiteral("--show-id"),
+                       NetbirdListProfiles);
+            break;
+
+        case NetbirdListProfiles:
+            parseProfileList(out);
+            startRemovingStaleProfiles();
+            break;
+
+        case NetbirdSelectPrev:
+        case NetbirdRemoveProfile:
+            removeNextStaleProfile();
+            break;
+
+        case NetbirdAddProfile:
+            parseAddedProfile(out);
+            emit status(tr("Подключение NetBird..."));
             runNetbird(QStringList() << QStringLiteral("up")
                                      << QStringLiteral("--setup-key") << m_SetupKey
-                                     << QStringLiteral("--management-url") << m_ManagementUrl,
+                                     << QStringLiteral("--management-url") << m_ManagementUrl
+                                     << QStringLiteral("--profile")
+                                     << (m_SessionProfileId.isEmpty()
+                                             ? QStringLiteral(LEGION_PROFILE_NAME)
+                                             : m_SessionProfileId)
+                                     << QStringLiteral("--disable-auto-connect"),
                        NetbirdUp);
-        }
-        else if (m_Stage == NetbirdUp) {
+            break;
+
+        case NetbirdRestoreProfile:
+            m_Cleaning = false;
+            m_Stage = Idle;
+            break;
+
+        case NetbirdUp:
             if (exitStatus != QProcess::NormalExit || exitCode != 0) {
                 fail(tr("Не удалось подключиться к NetBird"));
                 return;
@@ -60,14 +103,22 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
             m_AddRetries = 0;
 
             // Give the daemon a moment, then add the host (retried on timeout).
-            QTimer::singleShot(4000, this, [this]() { addHost(); });
+            QTimer::singleShot(1500, this, [this]() { addHost(); });
+            break;
+
+        default:
+            break;
         }
     });
 
     connect(m_Process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         // Ignore errors after we've already finished/failed (e.g. the kill() we
-        // issue in fail() can emit Crashed).
+        // issue in fail() can emit Crashed), and stop cleanup quietly.
         if (m_Stage == Idle) {
+            return;
+        }
+        if (m_Cleaning) {
+            m_Stage = Idle;
             return;
         }
         qWarning() << "NetBird process error:" << error;
@@ -113,6 +164,15 @@ void LegionConnect::start(const QString& code)
         return;
     }
 
+    // Reset per-connection NetBird profile state.
+    m_Cleaning = false;
+    m_NetbirdTouched = false;
+    m_PreviousProfileId.clear();
+    m_SessionProfileId.clear();
+    m_StaleProfileIds.clear();
+    m_StaleProfileActive = false;
+    m_RemoveIndex = 0;
+
     m_Stage = ExchangingCode;
     emit status(tr("Проверка кода..."));
 
@@ -127,6 +187,18 @@ void LegionConnect::start(const QString& code)
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         downloadSetupKeyFromReply(reply);
     });
+}
+
+void LegionConnect::disconnect()
+{
+    // Tear down the session NetBird profile and restore the user's own profile.
+    if (m_Stage != Idle || !m_NetbirdTouched) {
+        return;
+    }
+
+    m_Cleaning = true;
+    emit status(tr("Отключение NetBird..."));
+    runNetbird(QStringList() << QStringLiteral("down"), NetbirdDown);
 }
 
 void LegionConnect::downloadSetupKeyFromReply(QNetworkReply* reply)
@@ -182,8 +254,119 @@ void LegionConnect::runNetbird(const QStringList& args, Stage stage)
         return;
     }
 
+    m_NetbirdTouched = true;
     m_Stage = stage;
     m_Process->start(exe, args);
+}
+
+void LegionConnect::parseProfileList(const QByteArray& out)
+{
+    m_StaleProfileIds.clear();
+    m_StaleProfileActive = false;
+
+    // Output of `netbird profile list --show-id`:
+    //   ID        NAME         ACTIVE
+    //   default   default      ✓
+    //   b21dedd1  legiongames
+    const QString activeMark = QStringLiteral("\u2713"); // ✓
+    const QStringList lines = QString::fromUtf8(out).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString& line : lines) {
+        const QStringList fields = line.split(QRegularExpression(QStringLiteral("\\s+")),
+                                              Qt::SkipEmptyParts);
+        if (fields.size() < 2) {
+            continue;
+        }
+        const QString id = fields.at(0);
+        if (id == QLatin1String("ID")) {
+            continue; // header
+        }
+        const QString name = fields.at(1);
+        const bool active = line.contains(activeMark);
+        if (name == QLatin1String(LEGION_PROFILE_NAME)) {
+            m_StaleProfileIds.append(id);
+            if (active) {
+                m_StaleProfileActive = true;
+            }
+        } else if (active && m_PreviousProfileId.isEmpty()) {
+            // Remember the user's own profile so we can restore it later.
+            m_PreviousProfileId = id;
+        }
+    }
+}
+
+void LegionConnect::parseAddedProfile(const QByteArray& out)
+{
+    // "Profile added: <id>  legiongames"
+    const QString text = QString::fromUtf8(out);
+    const QString marker = QStringLiteral("Profile added:");
+    const int idx = text.indexOf(marker);
+    if (idx < 0) {
+        return;
+    }
+    const QStringList fields = text.mid(idx + marker.size())
+                                   .split(QRegularExpression(QStringLiteral("\\s+")),
+                                          Qt::SkipEmptyParts);
+    if (!fields.isEmpty()) {
+        m_SessionProfileId = fields.at(0);
+    }
+}
+
+void LegionConnect::startRemovingStaleProfiles()
+{
+    m_RemoveIndex = 0;
+
+    if (m_StaleProfileIds.isEmpty()) {
+        removeNextStaleProfile();
+        return;
+    }
+
+    if (m_StaleProfileActive) {
+        // Can't remove the active profile: switch to the user's previous one
+        // (or "default") first.
+        const QString target = m_PreviousProfileId.isEmpty()
+                                   ? QStringLiteral("default")
+                                   : m_PreviousProfileId;
+        runNetbird(QStringList() << QStringLiteral("profile")
+                                 << QStringLiteral("select") << target,
+                   NetbirdSelectPrev);
+        return;
+    }
+
+    removeNextStaleProfile();
+}
+
+void LegionConnect::removeNextStaleProfile()
+{
+    if (m_RemoveIndex < m_StaleProfileIds.size()) {
+        const QString id = m_StaleProfileIds.at(m_RemoveIndex++);
+        runNetbird(QStringList() << QStringLiteral("profile")
+                                 << QStringLiteral("remove") << id,
+                   NetbirdRemoveProfile);
+        return;
+    }
+
+    if (m_Cleaning) {
+        restorePreviousProfile();
+    } else {
+        addSessionProfile();
+    }
+}
+
+void LegionConnect::addSessionProfile()
+{
+    runNetbird(QStringList() << QStringLiteral("profile")
+                             << QStringLiteral("add") << QStringLiteral(LEGION_PROFILE_NAME),
+               NetbirdAddProfile);
+}
+
+void LegionConnect::restorePreviousProfile()
+{
+    const QString target = m_PreviousProfileId.isEmpty()
+                               ? QStringLiteral("default")
+                               : m_PreviousProfileId;
+    runNetbird(QStringList() << QStringLiteral("profile")
+                             << QStringLiteral("select") << target,
+               NetbirdRestoreProfile);
 }
 
 void LegionConnect::addHost()
@@ -315,13 +498,28 @@ void LegionConnect::fail(const QString& error)
         return;
     }
 
+    // A cleanup command failing is not worth surfacing — just stop cleaning.
+    if (m_Cleaning) {
+        m_Stage = Idle;
+        return;
+    }
+
     qWarning() << "LegionConnect failed:" << error;
 
+    const bool touched = m_NetbirdTouched;
+    const bool processRunning = (m_Process->state() != QProcess::NotRunning);
     m_Stage = Idle;
-    if (m_Process->state() != QProcess::NotRunning) {
+    if (processRunning) {
         m_Process->kill();
     }
     emit failed(error);
+
+    // Best-effort teardown: remove the session profile and restore the user's
+    // own profile. Skip it while the process is still running (the kill() above
+    // would race with the cleanup); the next connect removes leftovers anyway.
+    if (touched && !processRunning) {
+        disconnect();
+    }
 }
 
 QString LegionConnect::findNetbirdExecutable() const

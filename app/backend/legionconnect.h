@@ -12,8 +12,12 @@ class QProcess;
 
 // Orchestrates the LegionGames one-time-code connect flow inside the client:
 //   1. exchange the code for a NetBird setup key + PC address
-//   2. netbird down, then up --setup-key
+//   2. enroll into a dedicated "legiongames" NetBird *profile* (so the user's
+//      own login/profile is never touched): netbird down, remove any stale
+//      "legiongames" profiles, add a fresh one, then up --setup-key --profile
 //   3. add the host, pair (PIN) and relay the PIN back to Django
+// On failure the same profile cleanup runs (down + remove "legiongames" +
+// restore the previously active profile).
 // All state is in memory only; nothing is persisted.
 class LegionConnect : public QObject
 {
@@ -23,6 +27,7 @@ public:
     explicit LegionConnect(ComputerManager* manager, QObject* parent = nullptr);
 
     void start(const QString& code);
+    void disconnect();
 
 signals:
     void status(QString message);
@@ -34,7 +39,12 @@ private:
         Idle,
         ExchangingCode,
         NetbirdDown,
+        NetbirdListProfiles,
+        NetbirdSelectPrev,
+        NetbirdRemoveProfile,
+        NetbirdAddProfile,
         NetbirdUp,
+        NetbirdRestoreProfile,
         WaitingForHost,
         Pairing,
     };
@@ -46,6 +56,14 @@ private:
     void startPairing(NvComputer* computer);
     void submitPin();
     void checkFinished();
+
+    // NetBird profile management
+    void parseProfileList(const QByteArray& out);
+    void parseAddedProfile(const QByteArray& out);
+    void startRemovingStaleProfiles();
+    void removeNextStaleProfile();
+    void addSessionProfile();
+    void restorePreviousProfile();
 
     QString findNetbirdExecutable() const;
     NvComputer* findComputerByAddress(const QString& ip) const;
@@ -70,4 +88,13 @@ private:
     bool m_PinOk;
     int m_PinAttempts;
     int m_AddRetries;
+
+    // NetBird profile state
+    bool m_Cleaning;               // true while tearing down instead of connecting
+    bool m_NetbirdTouched;         // true once we've run at least one netbird command
+    QString m_PreviousProfileId;   // active profile before we switched (restore target)
+    QString m_SessionProfileId;    // the "legiongames" profile we enrolled
+    QStringList m_StaleProfileIds; // existing "legiongames" profiles to remove
+    bool m_StaleProfileActive;
+    int m_RemoveIndex;
 };
