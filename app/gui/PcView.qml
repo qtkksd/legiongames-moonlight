@@ -20,19 +20,51 @@ CenteredGridView {
     cellWidth: 310; cellHeight: 330;
     objectName: qsTr("Computers")
 
-    // Faded LegionGames logo sitting behind the list of PCs.
-    // This is the exact same logo.svg rendered on the website home page.
-    Image {
+    // Faded LegionGames logo sitting behind the list of PCs: the wheel spins
+    // while the alien stays put. Split into two SVGs because QtSvg < 6.7
+    // ignores <mask> (so the radial lines wouldn't be cut) and can't run CSS
+    // animations, so the wheel is rotated here in QML instead.
+    Item {
         id: backgroundLogo
-        source: "qrc:/res/logo.svg"
-        fillMode: Image.PreserveAspectFit
-        smooth: true
-        opacity: 0.08
         width: Math.min(pcGrid.width, pcGrid.height) * 0.7
         height: width
         x: (pcGrid.width - width) / 2
         y: (pcGrid.height - height) / 2
         z: -1
+        opacity: 0.08
+
+        Image {
+            id: backgroundWheel
+            anchors.fill: parent
+            source: "qrc:/res/logo_wheel.svg"
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+
+            // Matches the original CSS keyframes: hold ~10s, snap 60°, repeat
+            // six times (one full turn every 72s).
+            SequentialAnimation on rotation {
+                loops: Animation.Infinite
+                PauseAnimation { duration: 10000 }
+                NumberAnimation { from: 0;   to: 60;  duration: 2000 }
+                PauseAnimation { duration: 10000 }
+                NumberAnimation { from: 60;  to: 120; duration: 2000 }
+                PauseAnimation { duration: 10000 }
+                NumberAnimation { from: 120; to: 180; duration: 2000 }
+                PauseAnimation { duration: 10000 }
+                NumberAnimation { from: 180; to: 240; duration: 2000 }
+                PauseAnimation { duration: 10000 }
+                NumberAnimation { from: 240; to: 300; duration: 2000 }
+                PauseAnimation { duration: 10000 }
+                NumberAnimation { from: 300; to: 360; duration: 2000 }
+            }
+        }
+
+        Image {
+            anchors.fill: parent
+            source: "qrc:/res/logo_alien.svg"
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+        }
     }
 
     Component.onCompleted: {
