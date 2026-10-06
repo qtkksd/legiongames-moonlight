@@ -229,12 +229,14 @@ void AutoUpdateChecker::installUpdate(const QString& url)
         }
 
 #if defined(Q_OS_WIN32)
-        // The Windows installer is a WiX Burn bundle: it accepts /quiet (NOT
-        // the NSIS-style /S), plus /norestart. This still triggers UAC because
-        // the bundle installs per-machine.
-        qInfo() << "Launching silent installer:" << targetPath;
-        QProcess::startDetached(targetPath, QStringList() << QStringLiteral("/quiet")
-                                                          << QStringLiteral("/norestart"));
+        // Run the WiX Burn bundle interactively (NOT /quiet) so the user sees
+        // the standard installer UI (progress + finish page) instead of a silent
+        // update. The bundle's LaunchTarget adds a default-checked "Launch
+        // Moonlight" action on the finish page, so the app reopens once the
+        // install completes. /norestart suppresses any reboot prompt. Quit now
+        // so the installer can replace the running binary.
+        qInfo() << "Launching installer (interactive):" << targetPath;
+        QProcess::startDetached(targetPath, QStringList() << QStringLiteral("/norestart"));
         QCoreApplication::quit();
 #else
         // AppImage: make the new bundle executable, replace the running one,
