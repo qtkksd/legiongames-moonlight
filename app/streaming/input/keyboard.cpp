@@ -191,6 +191,16 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
     // Check for our special key combos. Each combo carries its own modifier
     // mask, so users can rebind any of them (defaults remain Ctrl+Alt+Shift+key).
     if (event->state == SDL_PRESSED) {
+        // TEMP DIAGNOSTIC: log the raw event for the "quit" key (Q) or whenever
+        // Ctrl+Alt+Shift are all held, so we can see the actual mod/sym/scancode.
+        if (event->keysym.sym == SDLK_q || event->keysym.scancode == SDL_SCANCODE_Q ||
+                (event->keysym.mod & (KMOD_CTRL | KMOD_ALT | KMOD_SHIFT)) == (KMOD_CTRL | KMOD_ALT | KMOD_SHIFT)) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "Shortcut probe: mod=0x%x sym=0x%x scancode=%d",
+                        (unsigned) event->keysym.mod, (unsigned) event->keysym.sym,
+                        (int) event->keysym.scancode);
+        }
+
         // First we test the SDLK combos for matches,
         // that way we ensure that latin keyboard users
         // can match to the key they see on their keyboards.
