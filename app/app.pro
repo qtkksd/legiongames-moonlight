@@ -584,6 +584,18 @@ isEmpty(LG_COMMIT) {
 }
 DEFINES += LG_COMMIT=\\\"$$LG_COMMIT\\\"
 
+# Embed a monotonic build number (CI run number) so the client can order updates
+# against the pkgs manifest's "build". Jenkins sets BUILD_NUMBER, GitHub Actions
+# sets GITHUB_RUN_NUMBER; local builds fall back to 0.
+LG_BUILD = $$(BUILD_NUMBER)
+isEmpty(LG_BUILD) {
+    LG_BUILD = $$(GITHUB_RUN_NUMBER)
+}
+isEmpty(LG_BUILD) {
+    LG_BUILD = "0"
+}
+DEFINES += LG_BUILD=\\\"$$LG_BUILD\\\"
+
 # moonlight-mic debug A/B capture instrumentation.
 # Enabled at qmake time with: qmake CONFIG+=debug-mic-ab-capture
 # When the CONFIG flag is absent (the default), DEBUG_MIC_AB_CAPTURE is not

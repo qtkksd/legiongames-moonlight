@@ -23,11 +23,10 @@ private slots:
     void handleRequestFinished(QNetworkReply* reply);
 
 private:
-    void checkPkgsFallback();
-    void finishWithCommit(const QString& latestCommit);
-    QString getPlatformDownloadUrl() const;
     static bool commitsEqual(const QString& a, const QString& b);
+    static QString platformAssetKey();
 
     QString m_CurrentCommit;
+    int m_CurrentBuild;
     QNetworkAccessManager* m_Nam;
 };

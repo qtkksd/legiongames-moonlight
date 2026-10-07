@@ -4,7 +4,6 @@
 #include <QNetworkRequest>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QJsonParseError>
 #include <QSysInfo>
 #include <QUrl>
 #include <QDir>
@@ -14,18 +13,19 @@
 #include <QCoreApplication>
 #include <QtDebug>
 
-// LG_COMMIT is injected by the build (see app.pro); fall back to the version
-// string for local/unsupported builds.
+// LG_COMMIT / LG_BUILD are injected by the build (see app.pro); fall back to the
+// version string / 0 for local or unsupported builds.
 #ifndef LG_COMMIT
 #define LG_COMMIT VERSION_STR
 #endif
+#ifndef LG_BUILD
+#define LG_BUILD "0"
+#endif
 
-// Releases are tagged with the short commit SHA, which is also what the pkgs
-// "version" file contains. Update available == embedded commit != latest.
-#define LG_RELEASES_API "https://api.github.com/repos/qtkksd/legiongames-moonlight/releases/latest"
-#define LG_PKGS_VERSION_URL "https://pkgs.legiongames.ru/legiongames-moonlight/latest/version"
-#define LG_PKGS_BASE "https://pkgs.legiongames.ru/legiongames-moonlight/latest/"
-#define LG_FALLBACK_URL "https://github.com/qtkksd/legiongames-moonlight/releases/latest"
+// The pkgs manifest is the single source of truth for the update: version,
+// monotonic build number, and per-OS asset URL + sha256.
+#define LG_MANIFEST_URL "https://pkgs.legiongames.ru/moonlight/latest/manifest.json"
+#define LG_FALLBACK_URL "https://pkgs.legiongames.ru/moonlight/latest/"
 
 AutoUpdateChecker::AutoUpdateChecker(QObject *parent) :
     QObject(parent)
@@ -42,7 +42,9 @@ AutoUpdateChecker::AutoUpdateChecker(QObject *parent) :
             this, &AutoUpdateChecker::handleRequestFinished);
 
     m_CurrentCommit = QString::fromLatin1(LG_COMMIT);
-    qDebug() << "Current LegionGames Moonlight commit:" << m_CurrentCommit;
+    m_CurrentBuild = QString::fromLatin1(LG_BUILD).toInt();
+    qDebug() << "Current LegionGames Moonlight commit:" << m_CurrentCommit
+             << "build:" << m_CurrentBuild;
 }
 
 void AutoUpdateChecker::start()
@@ -52,12 +54,9 @@ void AutoUpdateChecker::start()
         return;
     }
 
-#if defined(Q_OS_WIN32) || defined(Q_OS_DARWIN) || defined(STEAM_LINK) || defined(APP_IMAGE)
-    QNetworkRequest request{QUrl(QStringLiteral(LG_RELEASES_API))};
+    QNetworkRequest request{QUrl(QStringLiteral(LG_MANIFEST_URL))};
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
-    request.setRawHeader("Accept", "application/vnd.github+json");
     m_Nam->get(request);
-#endif
 }
 
 bool AutoUpdateChecker::commitsEqual(const QString& a, const QString& b)
@@ -73,49 +72,14 @@ bool AutoUpdateChecker::commitsEqual(const QString& a, const QString& b)
     return left == right || left.startsWith(right) || right.startsWith(left);
 }
 
-void AutoUpdateChecker::checkPkgsFallback()
+QString AutoUpdateChecker::platformAssetKey()
 {
-    if (!m_Nam) {
-        return;
-    }
-
-    qInfo() << "Falling back to pkgs version check";
-    QNetworkRequest request{QUrl(QStringLiteral(LG_PKGS_VERSION_URL))};
-    request.setRawHeader("User-Agent", "LegionGames-Moonlight");
-    m_Nam->get(request);
-}
-
-void AutoUpdateChecker::finishWithCommit(const QString& latestCommit)
-{
-    qDebug() << "Latest available commit:" << latestCommit
-             << "current commit:" << m_CurrentCommit;
-
-    if (commitsEqual(m_CurrentCommit, latestCommit)) {
-        qDebug() << "Moonlight is up to date";
-        return;
-    }
-
-    const QString downloadUrl = getPlatformDownloadUrl();
-    qDebug() << "Update available:" << latestCommit << downloadUrl;
-    emit onUpdateAvailable(latestCommit, downloadUrl);
-}
-
-QString AutoUpdateChecker::getPlatformDownloadUrl() const
-{
-    const QString base = QStringLiteral(LG_PKGS_BASE);
-
 #if defined(Q_OS_WIN32)
-    return base + QStringLiteral("windows/MoonlightSetup.exe");
+    return QStringLiteral("windows");
 #elif defined(Q_OS_DARWIN)
-    return base + QStringLiteral("macos/Moonlight.dmg");
-#elif defined(APP_IMAGE) || defined(Q_OS_LINUX)
-    const QString arch = QSysInfo::buildCpuArchitecture();
-    if (arch == QLatin1String("aarch64") || arch == QLatin1String("arm64")) {
-        return base + QStringLiteral("linux/Moonlight-aarch64.AppImage");
-    }
-    return base + QStringLiteral("linux/Moonlight-x86_64.AppImage");
+    return QStringLiteral("macos");
 #else
-    return QStringLiteral(LG_FALLBACK_URL);
+    return QStringLiteral("linux");
 #endif
 }
 
@@ -123,51 +87,58 @@ void AutoUpdateChecker::handleRequestFinished(QNetworkReply* reply)
 {
     Q_ASSERT(reply->isFinished());
 
-    const bool isGithub = reply->request().url().toString().contains(QStringLiteral("api.github.com"));
-
     if (reply->error() != QNetworkReply::NoError) {
-        qWarning() << "Update check request failed:" << reply->error() << reply->errorString();
+        qWarning() << "Update manifest fetch failed:"
+                   << reply->error() << reply->errorString();
         reply->deleteLater();
-
-        // If the GitHub API failed (offline, rate-limited, no releases, ...),
-        // try the pkgs version file instead.
-        if (isGithub) {
-            checkPkgsFallback();
-        }
         return;
     }
 
     const QByteArray payload = reply->readAll();
     reply->deleteLater();
 
-    if (isGithub) {
-        QJsonParseError error;
-        QJsonDocument jsonDoc = QJsonDocument::fromJson(payload, &error);
-        if (jsonDoc.isNull() || !jsonDoc.isObject()) {
-            qWarning() << "GitHub release response malformed:" << error.errorString();
-            checkPkgsFallback();
-            return;
-        }
-
-        const QString tag = jsonDoc.object().value(QStringLiteral("tag_name")).toString().trimmed();
-        if (tag.isEmpty()) {
-            qWarning() << "GitHub release response missing tag_name";
-            checkPkgsFallback();
-            return;
-        }
-
-        finishWithCommit(tag);
+    QJsonParseError error;
+    const QJsonDocument jsonDoc = QJsonDocument::fromJson(payload, &error);
+    if (jsonDoc.isNull() || !jsonDoc.isObject()) {
+        qWarning() << "Update manifest malformed:" << error.errorString();
+        return;
     }
-    else {
-        // The pkgs version file is a plain-text short commit SHA.
-        const QString latest = QString::fromUtf8(payload).trimmed();
-        if (latest.isEmpty()) {
-            qWarning() << "pkgs version response was empty";
-            return;
-        }
 
-        finishWithCommit(latest);
+    const QJsonObject manifest = jsonDoc.object();
+    const int latestBuild = manifest.value(QStringLiteral("build")).toInt(0);
+    const QString latestCommit = manifest.value(QStringLiteral("commit_full")).toString(
+        manifest.value(QStringLiteral("commit")).toString());
+    const QString latestVersion = manifest.value(QStringLiteral("version")).toString();
+
+    // Pick the asset for this platform.
+    QString assetUrl;
+    const QJsonObject assets = manifest.value(QStringLiteral("assets")).toObject();
+    const QJsonObject asset = assets.value(platformAssetKey()).toObject();
+    assetUrl = asset.value(QStringLiteral("url")).toString();
+
+    if (assetUrl.isEmpty()) {
+        qWarning() << "Update manifest missing asset for platform" << platformAssetKey();
+        return;
     }
+
+    // Decide whether we're outdated: prefer the monotonic build number, fall
+    // back to commit equality (prefix match).
+    bool outdated;
+    if (latestBuild > 0 && m_CurrentBuild > 0) {
+        outdated = latestBuild > m_CurrentBuild;
+    } else {
+        outdated = !latestCommit.isEmpty() && !commitsEqual(m_CurrentCommit, latestCommit);
+    }
+
+    if (!outdated) {
+        qDebug() << "Moonlight is up to date (build" << m_CurrentBuild
+                 << ", latest" << latestBuild << ")";
+        return;
+    }
+
+    qDebug() << "Update available: version" << latestVersion
+             << "build" << latestBuild << assetUrl;
+    emit onUpdateAvailable(latestVersion.isEmpty() ? latestCommit : latestVersion, assetUrl);
 }
 
 // Anything smaller than this is almost certainly an error page, not a build.
