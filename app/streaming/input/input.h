@@ -234,7 +234,6 @@ private:
         KeyCombo keyCombo;
         SDL_Keycode keyCode;
         SDL_Scancode scanCode;
-        Uint16 mod;
         bool enabled;
     } m_SpecialKeyCombos[KeyComboMax];
 

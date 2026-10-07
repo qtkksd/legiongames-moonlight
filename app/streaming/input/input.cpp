@@ -8,60 +8,6 @@
 #include <QtGlobal>
 #include <QDir>
 #include <QGuiApplication>
-#include <QStringList>
-
-// Parse a "Ctrl+Alt+Shift+Q"-style shortcut string into SDL keycode/scancode
-// plus a modifier mask. Returns false if the string is malformed or the key is
-// not recognized by SDL.
-static bool parseShortcut(const QString& combo, SDL_Keycode& keyCode, SDL_Scancode& scanCode, Uint16& mod)
-{
-    keyCode = SDLK_UNKNOWN;
-    scanCode = SDL_SCANCODE_UNKNOWN;
-    mod = 0;
-
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
-    const QStringList parts = combo.split('+', Qt::SkipEmptyParts);
-#else
-    const QStringList parts = combo.split('+', QString::SkipEmptyParts);
-#endif
-    if (parts.size() < 2) {
-        return false;
-    }
-
-    for (int i = 0; i < parts.size() - 1; i++) {
-        const QString m = parts[i].trimmed().toLower();
-        if (m == QStringLiteral("ctrl") || m == QStringLiteral("control")) {
-            mod |= KMOD_CTRL;
-        }
-        else if (m == QStringLiteral("alt")) {
-            mod |= KMOD_ALT;
-        }
-        else if (m == QStringLiteral("shift")) {
-            mod |= KMOD_SHIFT;
-        }
-        else if (m == QStringLiteral("meta") || m == QStringLiteral("super") ||
-                 m == QStringLiteral("win") || m == QStringLiteral("cmd")) {
-            mod |= KMOD_GUI;
-        }
-        else {
-            return false;
-        }
-    }
-
-    if (mod == 0) {
-        return false;
-    }
-
-    const QByteArray keyName = parts.last().trimmed().toUtf8();
-    // The scancode is resolved from a static, layout-independent table and is
-    // the reliable signal (no SDL keyboard init needed). The keycode depends on
-    // the current keyboard layout, so it is best-effort and may be SDLK_UNKNOWN
-    // (e.g. parsed before SDL's keyboard layout is ready) — matching still works
-    // via the scancode path in handleKeyEvent().
-    scanCode = SDL_GetScancodeFromName(keyName.constData());
-    keyCode = SDL_GetKeyFromName(keyName.constData());
-    return scanCode != SDL_SCANCODE_UNKNOWN;
-}
 
 SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, int streamHeight)
     : m_MultiController(prefs.multiController),
@@ -119,51 +65,56 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
 
-    // Populate special key combo configuration from the user's preferences.
-    // Each action maps to a stable string id stored in StreamingPreferences.
-    struct ShortcutDefinition {
-        KeyCombo combo;
-        const char* actionId;
-        bool enabled;
-    };
-    const ShortcutDefinition shortcutDefs[] = {
-        { KeyComboQuit, "quit", true },
-        { KeyComboUngrabInput, "ungrab", QGuiApplication::platformName() != "eglfs" },
-        { KeyComboToggleFullScreen, "toggleFullscreen", QGuiApplication::platformName() != "eglfs" },
-        { KeyComboToggleStatsOverlay, "toggleStats", true },
-        { KeyComboToggleMouseMode, "toggleMouseMode", true },
-        { KeyComboToggleCursorHide, "toggleCursorHide", true },
-        { KeyComboToggleMinimize, "toggleMinimize", QGuiApplication::platformName() != "eglfs" },
-        { KeyComboPasteText, "pasteText", true },
-        { KeyComboTogglePointerRegionLock, "togglePointerLock", true },
-        { KeyComboQuitAndExit, "quitAndExit", true },
-    };
+    // Populate special key combo configuration
+    m_SpecialKeyCombos[KeyComboQuit].keyCombo = KeyComboQuit;
+    m_SpecialKeyCombos[KeyComboQuit].keyCode = SDLK_q;
+    m_SpecialKeyCombos[KeyComboQuit].scanCode = SDL_SCANCODE_Q;
+    m_SpecialKeyCombos[KeyComboQuit].enabled = true;
 
-    for (const ShortcutDefinition& def : shortcutDefs) {
-        SDL_Keycode keyCode = SDLK_UNKNOWN;
-        SDL_Scancode scanCode = SDL_SCANCODE_UNKNOWN;
-        Uint16 mod = 0;
+    m_SpecialKeyCombos[KeyComboUngrabInput].keyCombo = KeyComboUngrabInput;
+    m_SpecialKeyCombos[KeyComboUngrabInput].keyCode = SDLK_z;
+    m_SpecialKeyCombos[KeyComboUngrabInput].scanCode = SDL_SCANCODE_Z;
+    m_SpecialKeyCombos[KeyComboUngrabInput].enabled = QGuiApplication::platformName() != "eglfs";
 
-        const QString combo = prefs.shortcutFor(QString::fromLatin1(def.actionId));
-        const bool valid = parseShortcut(combo, keyCode, scanCode, mod);
+    m_SpecialKeyCombos[KeyComboToggleFullScreen].keyCombo = KeyComboToggleFullScreen;
+    m_SpecialKeyCombos[KeyComboToggleFullScreen].keyCode = SDLK_x;
+    m_SpecialKeyCombos[KeyComboToggleFullScreen].scanCode = SDL_SCANCODE_X;
+    m_SpecialKeyCombos[KeyComboToggleFullScreen].enabled = QGuiApplication::platformName() != "eglfs";
 
-        m_SpecialKeyCombos[def.combo].keyCombo = def.combo;
-        m_SpecialKeyCombos[def.combo].keyCode = keyCode;
-        m_SpecialKeyCombos[def.combo].scanCode = scanCode;
-        m_SpecialKeyCombos[def.combo].mod = mod;
-        m_SpecialKeyCombos[def.combo].enabled = valid && def.enabled;
+    m_SpecialKeyCombos[KeyComboToggleStatsOverlay].keyCombo = KeyComboToggleStatsOverlay;
+    m_SpecialKeyCombos[KeyComboToggleStatsOverlay].keyCode = SDLK_s;
+    m_SpecialKeyCombos[KeyComboToggleStatsOverlay].scanCode = SDL_SCANCODE_S;
+    m_SpecialKeyCombos[KeyComboToggleStatsOverlay].enabled = true;
 
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Shortcut '%s' = \"%s\" -> key=0x%x scancode=%d mod=0x%x enabled=%d",
-                    def.actionId, qPrintable(combo),
-                    (unsigned) keyCode, (int) scanCode, (unsigned) mod,
-                    (int) m_SpecialKeyCombos[def.combo].enabled);
+    m_SpecialKeyCombos[KeyComboToggleMouseMode].keyCombo = KeyComboToggleMouseMode;
+    m_SpecialKeyCombos[KeyComboToggleMouseMode].keyCode = SDLK_m;
+    m_SpecialKeyCombos[KeyComboToggleMouseMode].scanCode = SDL_SCANCODE_M;
+    m_SpecialKeyCombos[KeyComboToggleMouseMode].enabled = true;
 
-        if (!valid) {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                        "Invalid shortcut for action %s; disabling it", def.actionId);
-        }
-    }
+    m_SpecialKeyCombos[KeyComboToggleCursorHide].keyCombo = KeyComboToggleCursorHide;
+    m_SpecialKeyCombos[KeyComboToggleCursorHide].keyCode = SDLK_c;
+    m_SpecialKeyCombos[KeyComboToggleCursorHide].scanCode = SDL_SCANCODE_C;
+    m_SpecialKeyCombos[KeyComboToggleCursorHide].enabled = true;
+
+    m_SpecialKeyCombos[KeyComboToggleMinimize].keyCombo = KeyComboToggleMinimize;
+    m_SpecialKeyCombos[KeyComboToggleMinimize].keyCode = SDLK_d;
+    m_SpecialKeyCombos[KeyComboToggleMinimize].scanCode = SDL_SCANCODE_D;
+    m_SpecialKeyCombos[KeyComboToggleMinimize].enabled = QGuiApplication::platformName() != "eglfs";
+
+    m_SpecialKeyCombos[KeyComboPasteText].keyCombo = KeyComboPasteText;
+    m_SpecialKeyCombos[KeyComboPasteText].keyCode = SDLK_v;
+    m_SpecialKeyCombos[KeyComboPasteText].scanCode = SDL_SCANCODE_V;
+    m_SpecialKeyCombos[KeyComboPasteText].enabled = true;
+
+    m_SpecialKeyCombos[KeyComboTogglePointerRegionLock].keyCombo = KeyComboTogglePointerRegionLock;
+    m_SpecialKeyCombos[KeyComboTogglePointerRegionLock].keyCode = SDLK_l;
+    m_SpecialKeyCombos[KeyComboTogglePointerRegionLock].scanCode = SDL_SCANCODE_L;
+    m_SpecialKeyCombos[KeyComboTogglePointerRegionLock].enabled = true;
+
+    m_SpecialKeyCombos[KeyComboQuitAndExit].keyCombo = KeyComboQuitAndExit;
+    m_SpecialKeyCombos[KeyComboQuitAndExit].keyCode = SDLK_e;
+    m_SpecialKeyCombos[KeyComboQuitAndExit].scanCode = SDL_SCANCODE_E;
+    m_SpecialKeyCombos[KeyComboQuitAndExit].enabled = true;
 
 #ifdef DEBUG_MIC_AB_CAPTURE
     // Debug-only mic A/B capture trigger. Bound to Ctrl+Alt+Shift+R ("R" for
@@ -171,7 +122,6 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     m_SpecialKeyCombos[KeyComboMicABCapture].keyCombo = KeyComboMicABCapture;
     m_SpecialKeyCombos[KeyComboMicABCapture].keyCode = SDLK_r;
     m_SpecialKeyCombos[KeyComboMicABCapture].scanCode = SDL_SCANCODE_R;
-    m_SpecialKeyCombos[KeyComboMicABCapture].mod = KMOD_CTRL | KMOD_ALT | KMOD_SHIFT;
     m_SpecialKeyCombos[KeyComboMicABCapture].enabled = true;
 #endif
 

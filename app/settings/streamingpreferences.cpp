@@ -56,7 +56,6 @@
 #define SER_LANGUAGE "language"
 #define SER_STREAMMIC "streammic"
 #define SER_MIC_CAPTURE_DEVICE "miccapturedevice"
-#define SER_SHORTCUTS "shortcuts"
 
 #define CURRENT_DEFAULT_VER 3
 
@@ -208,18 +207,6 @@ void StreamingPreferences::reload()
                                                                                                                  : UIDisplayMode::UI_MAXIMIZED)).toInt());
     language = static_cast<Language>(settings.value(SER_LANGUAGE,
                                                     static_cast<int>(Language::LANG_RU)).toInt());
-
-    // Load user-configurable in-stream shortcuts, repairing any bad entries
-    m_Shortcuts = settings.value(SER_SHORTCUTS, defaultShortcuts()).toMap();
-    {
-        const QVariantMap defaults = defaultShortcuts();
-        for (auto it = defaults.constBegin(); it != defaults.constEnd(); ++it) {
-            if (!m_Shortcuts.contains(it.key()) ||
-                    !isValidShortcut(m_Shortcuts.value(it.key()).toString())) {
-                m_Shortcuts[it.key()] = it.value();
-            }
-        }
-    }
 
 
     // Perform default settings updates as required based on last default version
@@ -449,83 +436,6 @@ void StreamingPreferences::save()
     settings.setValue(SER_KEEPAWAKE, keepAwake);
     settings.setValue(SER_STREAMMIC, streamMicToHost);
     settings.setValue(SER_MIC_CAPTURE_DEVICE, micCaptureDevice);
-    settings.setValue(SER_SHORTCUTS, m_Shortcuts);
-}
-
-QVariantMap StreamingPreferences::defaultShortcuts()
-{
-    QVariantMap map;
-    map[QStringLiteral("quit")] = QStringLiteral("Ctrl+Alt+Shift+Q");
-    map[QStringLiteral("ungrab")] = QStringLiteral("Ctrl+Alt+Shift+Z");
-    map[QStringLiteral("toggleFullscreen")] = QStringLiteral("Ctrl+Alt+Shift+X");
-    map[QStringLiteral("toggleStats")] = QStringLiteral("Ctrl+Alt+Shift+S");
-    map[QStringLiteral("toggleMouseMode")] = QStringLiteral("Ctrl+Alt+Shift+M");
-    map[QStringLiteral("toggleCursorHide")] = QStringLiteral("Ctrl+Alt+Shift+C");
-    map[QStringLiteral("toggleMinimize")] = QStringLiteral("Ctrl+Alt+Shift+D");
-    map[QStringLiteral("pasteText")] = QStringLiteral("Ctrl+Alt+Shift+V");
-    map[QStringLiteral("togglePointerLock")] = QStringLiteral("Ctrl+Alt+Shift+L");
-    map[QStringLiteral("quitAndExit")] = QStringLiteral("Ctrl+Alt+Shift+E");
-    return map;
-}
-
-QString StreamingPreferences::shortcutFor(const QString& action) const
-{
-    return m_Shortcuts.value(action, defaultShortcuts().value(action)).toString();
-}
-
-bool StreamingPreferences::isValidShortcut(const QString& combo) const
-{
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
-    const QStringList parts = combo.split('+', Qt::SkipEmptyParts);
-#else
-    const QStringList parts = combo.split('+', QString::SkipEmptyParts);
-#endif
-    // Require at least one modifier plus a key, so a bare key can't be hijacked
-    if (parts.size() < 2) {
-        return false;
-    }
-
-    Uint16 mod = 0;
-    for (int i = 0; i < parts.size() - 1; i++) {
-        const QString m = parts[i].trimmed().toLower();
-        if (m == QStringLiteral("ctrl") || m == QStringLiteral("control")) {
-            mod |= KMOD_CTRL;
-        }
-        else if (m == QStringLiteral("alt")) {
-            mod |= KMOD_ALT;
-        }
-        else if (m == QStringLiteral("shift")) {
-            mod |= KMOD_SHIFT;
-        }
-        else if (m == QStringLiteral("meta") || m == QStringLiteral("super") ||
-                 m == QStringLiteral("win") || m == QStringLiteral("cmd")) {
-            mod |= KMOD_GUI;
-        }
-        else {
-            return false;
-        }
-    }
-
-    if (mod == 0) {
-        return false;
-    }
-
-    const QByteArray keyName = parts.last().trimmed().toUtf8();
-    // The scancode is layout-independent (static table) and is the reliable
-    // signal; the keycode may be unknown before SDL's keyboard layout is ready,
-    // so only require a resolvable scancode.
-    return SDL_GetScancodeFromName(keyName.constData()) != SDL_SCANCODE_UNKNOWN;
-}
-
-bool StreamingPreferences::setShortcut(const QString& action, const QString& combo)
-{
-    if (!isValidShortcut(combo)) {
-        return false;
-    }
-
-    m_Shortcuts[action] = combo;
-    emit shortcutsChanged();
-    return true;
 }
 
 int StreamingPreferences::getDefaultBitrate(int width, int height, int fps, bool yuv444)
