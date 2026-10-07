@@ -53,9 +53,14 @@ static bool parseShortcut(const QString& combo, SDL_Keycode& keyCode, SDL_Scanco
     }
 
     const QByteArray keyName = parts.last().trimmed().toUtf8();
-    keyCode = SDL_GetKeyFromName(keyName.constData());
+    // The scancode is resolved from a static, layout-independent table and is
+    // the reliable signal (no SDL keyboard init needed). The keycode depends on
+    // the current keyboard layout, so it is best-effort and may be SDLK_UNKNOWN
+    // (e.g. parsed before SDL's keyboard layout is ready) — matching still works
+    // via the scancode path in handleKeyEvent().
     scanCode = SDL_GetScancodeFromName(keyName.constData());
-    return keyCode != SDLK_UNKNOWN && scanCode != SDL_SCANCODE_UNKNOWN;
+    keyCode = SDL_GetKeyFromName(keyName.constData());
+    return scanCode != SDL_SCANCODE_UNKNOWN;
 }
 
 SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, int streamHeight)
@@ -139,14 +144,20 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
         SDL_Scancode scanCode = SDL_SCANCODE_UNKNOWN;
         Uint16 mod = 0;
 
-        const bool valid = parseShortcut(prefs.shortcutFor(QString::fromLatin1(def.actionId)),
-                                         keyCode, scanCode, mod);
+        const QString combo = prefs.shortcutFor(QString::fromLatin1(def.actionId));
+        const bool valid = parseShortcut(combo, keyCode, scanCode, mod);
 
         m_SpecialKeyCombos[def.combo].keyCombo = def.combo;
         m_SpecialKeyCombos[def.combo].keyCode = keyCode;
         m_SpecialKeyCombos[def.combo].scanCode = scanCode;
         m_SpecialKeyCombos[def.combo].mod = mod;
         m_SpecialKeyCombos[def.combo].enabled = valid && def.enabled;
+
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "Shortcut '%s' = \"%s\" -> key=0x%x scancode=%d mod=0x%x enabled=%d",
+                    def.actionId, qPrintable(combo),
+                    (unsigned) keyCode, (int) scanCode, (unsigned) mod,
+                    (int) m_SpecialKeyCombos[def.combo].enabled);
 
         if (!valid) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,

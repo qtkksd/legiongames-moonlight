@@ -511,8 +511,10 @@ bool StreamingPreferences::isValidShortcut(const QString& combo) const
     }
 
     const QByteArray keyName = parts.last().trimmed().toUtf8();
-    return SDL_GetKeyFromName(keyName.constData()) != SDLK_UNKNOWN &&
-           SDL_GetScancodeFromName(keyName.constData()) != SDL_SCANCODE_UNKNOWN;
+    // The scancode is layout-independent (static table) and is the reliable
+    // signal; the keycode may be unknown before SDL's keyboard layout is ready,
+    // so only require a resolvable scancode.
+    return SDL_GetScancodeFromName(keyName.constData()) != SDL_SCANCODE_UNKNOWN;
 }
 
 bool StreamingPreferences::setShortcut(const QString& action, const QString& combo)
