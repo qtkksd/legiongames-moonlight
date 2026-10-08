@@ -475,13 +475,6 @@ CenteredGridView {
         standardButtons: connecting ? Dialog.NoButton : (Dialog.Ok | Dialog.Cancel)
         closePolicy: connecting ? Popup.NoAutoClose : Popup.CloseOnEscape
 
-        // The user cannot dismiss the progress view before it is done.
-        onClosing: {
-            if (connectCodeDialog.connecting && !connectCodeDialog.done) {
-                close.accepted = false
-            }
-        }
-
         onOpened: {
             connectCodeField.text = ""
             connectCodeStatus.text = ""
@@ -604,17 +597,21 @@ CenteredGridView {
         Connections {
             target: ComputerManager
 
-            onLegionConnectStatus: connectCodeStatus.text = message
+            function onLegionConnectStatus(message) {
+                connectCodeStatus.text = message
+            }
 
-            onLegionConnectProgress: connectCodeDialog.progress = percent
+            function onLegionConnectProgress(percent) {
+                connectCodeDialog.progress = percent
+            }
 
-            onLegionConnectFailed: {
+            function onLegionConnectFailed(error) {
                 connectCodeDialog.connecting = false
                 connectCodeStatus.color = "#c92a2a"
                 connectCodeStatus.text = error
             }
 
-            onLegionConnectSucceeded: {
+            function onLegionConnectSucceeded() {
                 // 200 from Django: complete the bar, then close.
                 connectCodeDialog.done = true
                 connectCodeDialog.progress = 100
