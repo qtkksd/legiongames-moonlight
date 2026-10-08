@@ -76,6 +76,7 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
         case NetbirdAddProfile:
             parseAddedProfile(out);
             emit status(tr("Подключение NetBird..."));
+            emit progress(40);
             runNetbird(QStringList() << QStringLiteral("up")
                                      << QStringLiteral("--setup-key") << m_SetupKey
                                      << QStringLiteral("--management-url") << m_ManagementUrl
@@ -99,9 +100,9 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
             }
 
             emit status(tr("Ожидание сети NetBird..."));
+            emit progress(60);
             m_Stage = WaitingForHost;
             m_AddRetries = 0;
-
             // Give the daemon a moment, then add the host (retried on timeout).
             QTimer::singleShot(1500, this, [this]() { addHost(); });
             break;
@@ -175,6 +176,7 @@ void LegionConnect::start(const QString& code)
 
     m_Stage = ExchangingCode;
     emit status(tr("Проверка кода..."));
+    emit progress(5);
 
     QJsonObject body;
     body[QStringLiteral("code")] = m_Code;
@@ -243,6 +245,7 @@ void LegionConnect::downloadSetupKeyFromReply(QNetworkReply* reply)
     }
 
     emit status(tr("Подключение NetBird..."));
+    emit progress(20);
     runNetbird(QStringList() << QStringLiteral("down"), NetbirdDown);
 }
 
@@ -381,6 +384,7 @@ void LegionConnect::addHost()
     }
 
     emit status(tr("Добавление ПК..."));
+    emit progress(75);
 
     // mdns=true keeps this silent (no error dialogs / STUN); we react to
     // computerStateChanged and retry on a timer.
@@ -408,6 +412,7 @@ void LegionConnect::startPairing(NvComputer* computer)
 
     m_PinAttempts = 0;
     emit status(tr("Сопряжение с ПК..."));
+    emit progress(85);
 
     // Start the client's pairing handshake first. The host holds the
     // getservercert request open until the PIN arrives, so we give it a moment
@@ -441,11 +446,23 @@ void LegionConnect::submitPin()
             return;
         }
 
+        // Completion is gated on HTTP 200 from Django, which is only returned
+        // once the connection is verified (and activated) server-side.
+        const int httpStatus = reply->attribute(
+            QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
         bool ok = false;
         QString errorText = tr("ПК отклонил PIN");
 
-        if (reply->error() != QNetworkReply::NoError) {
+        if (reply->error() != QNetworkReply::NoError || httpStatus != 200) {
             errorText = tr("Не удалось авторизовать PIN (сеть)");
+            const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+            if (doc.isObject()) {
+                const QString serverError = doc.object().value(QStringLiteral("error")).toString();
+                if (!serverError.isEmpty()) {
+                    errorText = serverError;
+                }
+            }
         }
         else {
             const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
@@ -461,6 +478,7 @@ void LegionConnect::submitPin()
         if (ok) {
             m_PinDone = true;
             m_PinOk = true;
+            emit progress(100);
             checkFinished();
             return;
         }

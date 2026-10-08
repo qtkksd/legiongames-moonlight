@@ -260,6 +260,8 @@ signals:
 
     void legionConnectStatus(QString message);
 
+    void legionConnectProgress(int percent);
+
     void legionConnectFailed(QString error);
 
     void legionConnectSucceeded();

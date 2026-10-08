@@ -200,6 +200,7 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
     // One-time-code connect flow (NetBird enrollment + auto add + pairing)
     m_LegionConnect = new LegionConnect(this, this);
     connect(m_LegionConnect, &LegionConnect::status, this, &ComputerManager::legionConnectStatus);
+    connect(m_LegionConnect, &LegionConnect::progress, this, &ComputerManager::legionConnectProgress);
     connect(m_LegionConnect, &LegionConnect::failed, this, &ComputerManager::legionConnectFailed);
     connect(m_LegionConnect, &LegionConnect::succeeded, this, &ComputerManager::legionConnectSucceeded);
 

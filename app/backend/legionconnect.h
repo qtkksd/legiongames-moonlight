@@ -31,6 +31,7 @@ public:
 
 signals:
     void status(QString message);
+    void progress(int percent);
     void failed(QString error);
     void succeeded();
 
