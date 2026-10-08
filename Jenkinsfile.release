@@ -1,0 +1,54 @@
+pipeline {
+  agent { label 'controller' }
+  options { timestamps() }
+  stages {
+    stage('Promote highest tagged moonlight release') {
+      steps {
+        sh '''#!/bin/bash
+set -euo pipefail
+REPO=qtkksd/legiongames-moonlight
+PAT=$(bao-get github GITHUB_API_PAT)
+URL="https://x-access-token:${PAT}@github.com/${REPO}.git"
+BASE=/pkgs/moonlight
+tags=$(mktemp); cand=$(mktemp)
+git ls-remote --tags --refs "$URL" 'refs/tags/v*' | sed 's#refs/tags/##' | awk '{print $2" "$1}' > "$tags"
+while read -r tag sha; do
+  [ -n "${tag:-}" ] || continue
+  case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) continue;; esac
+  sha7=$(printf '%s' "$sha" | cut -c1-7)
+  if [ -f "$BASE/commits/$sha7/windows/MoonlightSetup.exe" ]; then src="$BASE/commits/$sha7"
+  elif [ -f "$BASE/$tag/windows/MoonlightSetup.exe" ]; then src="$BASE/$tag"
+  else continue; fi
+  printf '%s|%s|%s|%s\\n' "$tag" "$sha" "$sha7" "$src" >> "$cand"
+done < "$tags"
+if [ ! -s "$cand" ]; then echo "no tagged artifacts available yet"; exit 0; fi
+pick=$(sort -t'|' -k1,1V "$cand" | tail -1)
+tag=$(printf '%s' "$pick" | cut -d'|' -f1)
+sha=$(printf '%s' "$pick" | cut -d'|' -f2)
+sha7=$(printf '%s' "$pick" | cut -d'|' -f3)
+src=$(printf '%s' "$pick" | cut -d'|' -f4)
+if [ -L "$BASE/latest" ] && [ "$(readlink "$BASE/latest")" = "$tag" ] && [ -f "$BASE/$tag/manifest.json" ]; then
+  echo "stable already at $tag; nothing to do"; exit 0
+fi
+echo "promote $tag (commit $sha7) from $src"
+if [ "$src" != "$BASE/$tag" ]; then
+  rm -rf "$BASE/$tag.tmp"; cp -a "$src" "$BASE/$tag.tmp"; rm -rf "$BASE/$tag"; mv -T "$BASE/$tag.tmp" "$BASE/$tag"
+fi
+ver=${tag#v}
+win="$BASE/$tag/windows/MoonlightSetup.exe"
+lin="$BASE/$tag/linux/Moonlight-x86_64.AppImage"
+hW=$(sha256sum "$win" | cut -d' ' -f1); sW=$(stat -c %s "$win")
+hL=$(sha256sum "$lin" | cut -d' ' -f1); sL=$(stat -c %s "$lin")
+build=$(jq -r '.build // 0' "$BASE/$tag/manifest.json" 2>/dev/null || echo 0)
+ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+jq -n --arg ver "$ver" --arg tag "$tag" --arg sha "$sha7" --arg full "$sha" --argjson build "$build" --arg hW "$hW" --argjson sW "$sW" --arg hL "$hL" --argjson sL "$sL" --arg ts "$ts" \\
+  '{version:$ver,tag:$tag,commit:$sha,commit_full:$full,build:$build,channel:"stable",min_supported:"0.0.0",released_at:$ts,assets:{windows:{url:"https://pkgs.legiongames.ru/moonlight/latest/windows/MoonlightSetup.exe",sha256:$hW,size:$sW},linux:{url:"https://pkgs.legiongames.ru/moonlight/latest/linux/Moonlight-x86_64.AppImage",sha256:$hL,size:$sL}}}' \\
+  > "$BASE/$tag/manifest.json"
+echo "$sha7" > "$BASE/$tag/version"
+( cd "$BASE" && ln -sfn "$tag" latest.new && mv -T latest.new latest )
+echo "stable latest -> $tag"
+'''
+      }
+    }
+  }
+}

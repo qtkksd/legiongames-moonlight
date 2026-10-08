@@ -3,17 +3,36 @@ pipeline {
   options { timestamps(); disableConcurrentBuilds() }
   triggers { pollSCM('H/2 * * * *') }
   stages {
-    stage('Windows (MSVC2022 + Qt6)') {
+    stage('Prepare') {
+      agent { label 'controller' }
+      steps {
+        checkout([$class: 'GitSCM', userRemoteConfigs: [[url: 'https://github.com/qtkksd/legiongames-moonlight.git', credentialsId: 'github-qtkksd']], branches: [[name: '*/legiongames-moonlight']]])
+        script {
+          env.GIT_SHA = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
+          env.GIT_SHA_FULL = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+        }
+      }
+    }
+    stage('Windows (MSVC2022 + Qt6 x64)') {
       agent { label 'windows-msys2' }
       steps {
-        checkout scm
-        script { env.GIT_SHA = env.GIT_COMMIT.take(7) }
+        checkout([$class: 'GitSCM', userRemoteConfigs: [[url: 'https://github.com/qtkksd/legiongames-moonlight.git', credentialsId: 'github-qtkksd']], branches: [[name: '*/legiongames-moonlight']]])
+        writeFile file: 'ci-patch.ps1', text: '''$p='globaldefs.pri'
+(Get-Content $p) -replace [regex]::Escape('QMAKE_LFLAGS += -cetcompat'),'# ci' | Set-Content $p -Encoding ascii
+$p='scripts/generate-bundle.bat'
+(Get-Content $p) -replace [regex]::Escape('if not exist "%BUILD_ROOT%\\build-arm64-%BUILD_CONFIG%\\Moonlight.msi" ('),'if 1==2 (' | Set-Content $p -Encoding ascii
+$p='wix/MoonlightSetup/Bundle.wxs'
+(Get-Content $p -Raw) -replace '(?s)\\s*<MsiPackage Id="Moonlight_arm64".*?</MsiPackage>','' | Set-Content $p -Encoding ascii
+'''
         writeFile file: 'ci-build-win.bat', text: '''@echo off
 setlocal enableextensions
-set "PATH=C:\\wix;C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\MSBuild\\Current\\Bin;C:\\Qt\\6.11.0\\msvc2022_64\\bin;%PATH%"
+powershell -NoProfile -ExecutionPolicy Bypass -File ci-patch.ps1
+set "VSPATH=C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools"
 set "WIX=C:\\wix"
+set "DOTNET_ROOT=C:\\dotnet"
+set "PATH=C:\\Program Files\\7-Zip;C:\\wix;C:\\dotnet;C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\MSBuild\\Current\\Bin;%PATH%"
 set "CI_VERSION=%GIT_SHA%"
-set "COMMIT=%GIT_COMMIT%"
+set "COMMIT=%GIT_SHA_FULL%"
 set "TAG=" & set "EXACT=" & set "DESC="
 for /f "delims=" %%i in ('git describe --tags --abbrev=0 2^>nul') do set "TAG=%%i"
 for /f "delims=" %%i in ('git describe --tags --exact-match 2^>nul') do set "EXACT=%%i"
@@ -23,10 +42,18 @@ for /f "delims=" %%i in ('git describe --tags --always 2^>nul') do set "DESC=%%i
 >> ci-meta.properties echo DESC=%DESC%
 >> ci-meta.properties echo COMMIT=%COMMIT%
 >> ci-meta.properties echo SHORT=%GIT_SHA%
+
+rem ===== x64 =====
+set "PATH=C:\\Qt\\6.11.0\\msvc2022_64\\bin;%PATH%"
+call "%VSPATH%\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
+for /f "usebackq delims=" %%i in (`"%CD%\\scripts\\vswhere.exe" -latest -products * -find VC\\Redist\\MSVC\\*\\x64\\Microsoft.VC*.CRT`) do set "VC_REDIST_DLL_PATH=%%i"
 call scripts\\build-arch.bat Release x64
 if errorlevel 1 exit /b 1
+
+rem ===== bundle (x64 only) =====
 call scripts\\generate-bundle.bat Release
 if errorlevel 1 exit /b 1
+
 if not exist artifacts\\windows mkdir artifacts\\windows
 for %%f in (build\\installer-Release\\MoonlightSetup-*.exe) do copy /y "%%f" "artifacts\\windows\\MoonlightSetup.exe" >nul
 powershell -NoProfile -Command "Compress-Archive -Path 'build/deploy-x64-release/*' -DestinationPath 'artifacts/windows/Moonlight-Windows-x64.zip' -Force"
@@ -40,14 +67,11 @@ exit /b 0
     stage('Linux AppImage') {
       agent { label 'controller' }
       steps {
-        checkout scm
-        script {
-          env.GIT_SHA = env.GIT_SHA ?: env.GIT_COMMIT.take(7)
-        }
+        checkout([$class: 'GitSCM', userRemoteConfigs: [[url: 'https://github.com/qtkksd/legiongames-moonlight.git', credentialsId: 'github-qtkksd']], branches: [[name: '*/legiongames-moonlight']]])
         sh '''#!/bin/bash
 set -euo pipefail
 HOSTWS=$(printf '%s' "$WORKSPACE" | sed 's#/var/jenkins_home#/root/jenkins/home#')
-docker run --rm -v "$HOSTWS":/src -w /src -e CI_VERSION="$GIT_SHA" moonlight-build:22.04 bash -lc 'scripts/build-appimage.sh'
+docker run --rm -v "$HOSTWS":/src -w /src -e CI_VERSION="$GIT_SHA" -e APPIMAGE_EXTRACT_AND_RUN=1 moonlight-build:22.04 bash -lc 'scripts/build-appimage.sh'
 mkdir -p artifacts/linux
 cp build/installer-release/Moonlight-*-x86_64.AppImage artifacts/linux/Moonlight-x86_64.AppImage
 ls -la artifacts/linux
