@@ -471,6 +471,11 @@ CenteredGridView {
         property bool done: false
         property int progress: 0
 
+        // Fixed size so the code-entry view and the progress view are exactly
+        // the same box (no resize when switching, bar matches the field width).
+        width: 420
+        height: 320
+
         title: qsTr("Подключение по коду")
         // Custom footer buttons (below). Do NOT use standardButtons / Dialog.accept():
         // accept() closes the dialog the instant the code is submitted, so the

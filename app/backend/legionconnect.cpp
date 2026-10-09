@@ -148,6 +148,11 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
             fail(error);
             return;
         }
+        // The client is now authenticated with the host (pairing done). This is
+        // the real "authed into PC" moment and lands ~2s before the Django
+        // /api/client/pin round-trip returns, so complete the bar here rather
+        // than on the slower server response.
+        emit progress(100);
         checkFinished();
     });
 }
@@ -478,7 +483,6 @@ void LegionConnect::submitPin()
         if (ok) {
             m_PinDone = true;
             m_PinOk = true;
-            emit progress(100);
             checkFinished();
             return;
         }
