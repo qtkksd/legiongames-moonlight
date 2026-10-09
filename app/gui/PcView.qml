@@ -502,154 +502,169 @@ CenteredGridView {
             connectCodeField.forceActiveFocus()
         }
 
-        ColumnLayout {
-            spacing: 12
+        // Fixed-size, centered content box. The inner ColumnLayout has a fixed
+        // width (360) so the layout never grows/shrinks with the status text;
+        // fill-height spacers keep the group vertically centered.
+        contentItem: Item {
+            implicitWidth: connectCodeDialog.availableWidth
+            implicitHeight: connectCodeDialog.availableHeight
 
-            Label {
-                visible: !connectCodeDialog.connecting
-                text: qsTr("Введите код подключения с сайта LegionGames:")
-                font.bold: true
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
-            }
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: 360
+                height: parent.height
+                spacing: 12
 
-            TextField {
-                id: connectCodeField
-                visible: !connectCodeDialog.connecting
-                Layout.fillWidth: true
-                focus: true
-                enabled: !connectCodeDialog.connecting
-                Keys.onReturnPressed: connectCodeDialog.startConnect()
-                Keys.onEnterPressed: connectCodeDialog.startConnect()
-            }
+                Item { Layout.fillHeight: true }
 
-            // Larger spinner logo shown while connecting: same alien + spinning
-            // wheel as the list background, only scaled down — the animation is
-            // identical (hold ~10s, snap 60° six times).
-            Item {
-                visible: connectCodeDialog.connecting
-                Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: 120
-                Layout.preferredHeight: 120
+                Label {
+                    visible: !connectCodeDialog.connecting
+                    text: qsTr("Введите код подключения с сайта LegionGames:")
+                    font.bold: true
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
 
-                Image {
-                    anchors.fill: parent
-                    source: "qrc:/res/logo_wheel.svg"
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
+                TextField {
+                    id: connectCodeField
+                    visible: !connectCodeDialog.connecting
+                    Layout.fillWidth: true
+                    focus: true
+                    enabled: !connectCodeDialog.connecting
+                    Keys.onReturnPressed: connectCodeDialog.startConnect()
+                    Keys.onEnterPressed: connectCodeDialog.startConnect()
+                }
 
-                    SequentialAnimation on rotation {
-                        loops: Animation.Infinite
-                        PauseAnimation { duration: 10000 }
-                        NumberAnimation { from: 0;   to: 60;  duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
-                        PauseAnimation { duration: 10000 }
-                        NumberAnimation { from: 60;  to: 120; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
-                        PauseAnimation { duration: 10000 }
-                        NumberAnimation { from: 120; to: 180; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
-                        PauseAnimation { duration: 10000 }
-                        NumberAnimation { from: 180; to: 240; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
-                        PauseAnimation { duration: 10000 }
-                        NumberAnimation { from: 240; to: 300; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
-                        PauseAnimation { duration: 10000 }
-                        NumberAnimation { from: 300; to: 360; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
+                // Larger spinner logo shown while connecting: same alien + spinning
+                // wheel as the list background, only scaled down — the animation is
+                // identical (hold ~10s, snap 60° six times).
+                Item {
+                    visible: connectCodeDialog.connecting
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: 120
+                    Layout.preferredHeight: 120
+
+                    Image {
+                        anchors.fill: parent
+                        source: "qrc:/res/logo_wheel.svg"
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+
+                        SequentialAnimation on rotation {
+                            loops: Animation.Infinite
+                            PauseAnimation { duration: 10000 }
+                            NumberAnimation { from: 0;   to: 60;  duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
+                            PauseAnimation { duration: 10000 }
+                            NumberAnimation { from: 60;  to: 120; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
+                            PauseAnimation { duration: 10000 }
+                            NumberAnimation { from: 120; to: 180; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
+                            PauseAnimation { duration: 10000 }
+                            NumberAnimation { from: 180; to: 240; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
+                            PauseAnimation { duration: 10000 }
+                            NumberAnimation { from: 240; to: 300; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
+                            PauseAnimation { duration: 10000 }
+                            NumberAnimation { from: 300; to: 360; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
+                        }
+                    }
+
+                    Image {
+                        anchors.fill: parent
+                        source: "qrc:/res/logo_alien.svg"
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
                     }
                 }
 
-                Image {
-                    anchors.fill: parent
-                    source: "qrc:/res/logo_alien.svg"
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
-                }
-            }
+                // Progress bar in the LegionGames palette (accent #c92a2a on a
+                // dark track). Driven by LegionConnect::progress.
+                ProgressBar {
+                    id: connectProgressBar
+                    visible: connectCodeDialog.connecting
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 8
+                    from: 0
+                    to: 100
+                    value: connectCodeDialog.progress
 
-            // Progress bar in the LegionGames palette (accent #c92a2a on a
-            // dark track). Reaches 100% only when Django returns 200.
-            ProgressBar {
-                id: connectProgressBar
-                visible: connectCodeDialog.connecting
-                Layout.fillWidth: true
-                Layout.preferredHeight: 8
-                from: 0
-                to: 100
-                value: connectCodeDialog.progress
-
-                background: Rectangle {
-                    implicitHeight: 8
-                    radius: 4
-                    color: "#1a1a1a"
-                    border.color: "#3a3a3a"
-                    border.width: 1
-                }
-
-                contentItem: Item {
-                    Rectangle {
-                        width: connectProgressBar.visualPosition * parent.width
-                        height: parent.height
+                    background: Rectangle {
+                        implicitHeight: 8
                         radius: 4
-                        color: "#c92a2a"
+                        color: "#1a1a1a"
+                        border.color: "#3a3a3a"
+                        border.width: 1
+                    }
+
+                    contentItem: Item {
+                        Rectangle {
+                            width: connectProgressBar.visualPosition * parent.width
+                            height: parent.height
+                            radius: 4
+                            color: "#c92a2a"
+                        }
                     }
                 }
-            }
 
-            Label {
-                id: connectCodeStatus
-                color: "#f0a500"
-                Layout.fillWidth: true
-                wrapMode: Text.Wrap
-                horizontalAlignment: connectCodeDialog.connecting
-                                     ? Text.AlignHCenter : Text.AlignLeft
-            }
-
-            RowLayout {
-                visible: !connectCodeDialog.connecting
-                Layout.fillWidth: true
-                spacing: 8
-
-                Item { Layout.fillWidth: true }
-
-                Button {
-                    text: qsTr("Отмена")
-                    onClicked: connectCodeDialog.close()
+                Label {
+                    id: connectCodeStatus
+                    color: "#f0a500"
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    horizontalAlignment: connectCodeDialog.connecting
+                                         ? Text.AlignHCenter : Text.AlignLeft
                 }
 
-                Button {
-                    text: qsTr("Подключить")
-                    enabled: connectCodeField.text.length > 0
-                    onClicked: connectCodeDialog.startConnect()
+                RowLayout {
+                    visible: !connectCodeDialog.connecting
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Item { Layout.fillWidth: true }
+
+                    Button {
+                        text: qsTr("Отмена")
+                        onClicked: connectCodeDialog.close()
+                    }
+
+                    Button {
+                        text: qsTr("Подключить")
+                        enabled: connectCodeField.text.length > 0
+                        onClicked: connectCodeDialog.startConnect()
+                    }
+                }
+
+                Item { Layout.fillHeight: true }
+            }
+
+            Connections {
+                target: ComputerManager
+
+                function onLegionConnectStatus(message) {
+                    connectCodeStatus.text = message
+                }
+
+                function onLegionConnectProgress(percent) {
+                    connectCodeDialog.progress = percent
+                }
+
+                function onLegionConnectFailed(error) {
+                    connectCodeDialog.connecting = false
+                    connectCodeStatus.color = "#c92a2a"
+                    connectCodeStatus.text = error
+                }
+
+                function onLegionConnectSucceeded() {
+                    // auth done: complete the bar, then close.
+                    connectCodeDialog.done = true
+                    connectCodeDialog.progress = 100
+                    connectCloseTimer.start()
                 }
             }
-        }
 
-        Connections {
-            target: ComputerManager
-
-            function onLegionConnectStatus(message) {
-                connectCodeStatus.text = message
+            Timer {
+                id: connectCloseTimer
+                interval: 400
+                onTriggered: connectCodeDialog.close()
             }
-
-            function onLegionConnectProgress(percent) {
-                connectCodeDialog.progress = percent
-            }
-
-            function onLegionConnectFailed(error) {
-                connectCodeDialog.connecting = false
-                connectCodeStatus.color = "#c92a2a"
-                connectCodeStatus.text = error
-            }
-
-            function onLegionConnectSucceeded() {
-                // 200 from Django: complete the bar, then close.
-                connectCodeDialog.done = true
-                connectCodeDialog.progress = 100
-                connectCloseTimer.start()
-            }
-        }
-
-        Timer {
-            id: connectCloseTimer
-            interval: 400
-            onTriggered: connectCodeDialog.close()
         }
     }
 
