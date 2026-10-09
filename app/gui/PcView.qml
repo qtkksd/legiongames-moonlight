@@ -472,8 +472,20 @@ CenteredGridView {
         property int progress: 0
 
         title: qsTr("Подключение по коду")
-        standardButtons: connecting ? Dialog.NoButton : (Dialog.Ok | Dialog.Cancel)
+        // Custom footer buttons (below). Do NOT use standardButtons / Dialog.accept():
+        // accept() closes the dialog the instant the code is submitted, so the
+        // progress view would only flash for a split second.
+        standardButtons: Dialog.NoButton
         closePolicy: connecting ? Popup.NoAutoClose : Popup.CloseOnEscape
+
+        function startConnect() {
+            if (connectCodeField.text.length > 0) {
+                connecting = true
+                connectCodeStatus.color = "#f0a500"
+                connectCodeStatus.text = qsTr("Проверка кода...")
+                ComputerManager.startLegionConnect(connectCodeField.text)
+            }
+        }
 
         onOpened: {
             connectCodeField.text = ""
@@ -483,15 +495,6 @@ CenteredGridView {
             done = false
             progress = 0
             connectCodeField.forceActiveFocus()
-        }
-
-        onAccepted: {
-            if (connectCodeField.text.length > 0) {
-                connecting = true
-                connectCodeStatus.color = "#f0a500"
-                connectCodeStatus.text = qsTr("Проверка кода...")
-                ComputerManager.startLegionConnect(connectCodeField.text)
-            }
         }
 
         ColumnLayout {
@@ -511,8 +514,8 @@ CenteredGridView {
                 Layout.fillWidth: true
                 focus: true
                 enabled: !connectCodeDialog.connecting
-                Keys.onReturnPressed: connectCodeDialog.accept()
-                Keys.onEnterPressed: connectCodeDialog.accept()
+                Keys.onReturnPressed: connectCodeDialog.startConnect()
+                Keys.onEnterPressed: connectCodeDialog.startConnect()
             }
 
             // Larger spinner logo shown while connecting: same alien + spinning
@@ -591,6 +594,25 @@ CenteredGridView {
                 wrapMode: Text.Wrap
                 horizontalAlignment: connectCodeDialog.connecting
                                      ? Text.AlignHCenter : Text.AlignLeft
+            }
+
+            RowLayout {
+                visible: !connectCodeDialog.connecting
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: qsTr("Отмена")
+                    onClicked: connectCodeDialog.close()
+                }
+
+                Button {
+                    text: qsTr("Подключить")
+                    enabled: connectCodeField.text.length > 0
+                    onClicked: connectCodeDialog.startConnect()
+                }
             }
         }
 
