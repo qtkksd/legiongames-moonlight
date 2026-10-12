@@ -213,6 +213,10 @@ void EGLRenderer::renderOverlay(Overlay::OverlayType type, int viewportWidth, in
             // Top left
             overlayRect.x = 0;
             overlayRect.y = viewportHeight - newSurface->h;
+        } else if (type == Overlay::OverlayNotification) {
+            // Top right (viewport origin is lower-left)
+            overlayRect.x = viewportWidth - newSurface->w;
+            overlayRect.y = viewportHeight - newSurface->h;
         } else {
             SDL_assert(false);
         }

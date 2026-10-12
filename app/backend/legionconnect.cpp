@@ -2,6 +2,7 @@
 #include "computermanager.h"
 #include "nvcomputer.h"
 #include "nvaddress.h"
+#include "sessiondeadline.h"
 
 #include <QTimer>
 #include <QProcess>
@@ -12,6 +13,7 @@
 #include <QNetworkRequest>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QDateTime>
 #include <QRegularExpression>
 #include <QUrl>
 #include <QtDebug>
@@ -246,6 +248,23 @@ void LegionConnect::downloadSetupKeyFromReply(QNetworkReply* reply)
     m_ManagementUrl = obj.value(QStringLiteral("management_url")).toString();
     if (m_ManagementUrl.isEmpty()) {
         m_ManagementUrl = QStringLiteral(LEGION_DEFAULT_MANAGEMENT_URL);
+    }
+
+    // End-of-booking notification deadline (optional). Drives the in-stream
+    // overlay warnings; purely local countdown, nothing is polled afterwards.
+    const QJsonObject deadlineObj =
+        obj.value(QStringLiteral("session_deadline")).toObject();
+    if (!deadlineObj.isEmpty()) {
+        const QDateTime end = QDateTime::fromString(
+            deadlineObj.value(QStringLiteral("end_of_booking")).toString(),
+            Qt::ISODate);
+        if (end.isValid()) {
+            SessionDeadline::set(
+                end.toMSecsSinceEpoch(),
+                deadlineObj.value(QStringLiteral("grace_minutes")).toInt());
+        }
+    } else {
+        SessionDeadline::clear();
     }
 
     if (m_SetupKey.isEmpty() || m_PcIp.isEmpty() || m_Token.isEmpty()) {

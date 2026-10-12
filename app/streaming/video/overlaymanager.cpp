@@ -15,6 +15,11 @@ OverlayManager::OverlayManager() :
     m_Overlays[OverlayType::OverlayStatusUpdate].color = {0xCC, 0x00, 0x00, 0xFF};
     m_Overlays[OverlayType::OverlayStatusUpdate].fontSize = 36;
 
+    // Amber, calmer than the red connection-warning slot — used for
+    // service notices such as the upcoming end of the session/booking.
+    m_Overlays[OverlayType::OverlayNotification].color = {0xF0, 0xA0, 0x18, 0xFF};
+    m_Overlays[OverlayType::OverlayNotification].fontSize = 28;
+
     // While TTF will usually not be initialized here, it is valid for that not to
     // be the case, since Session destruction is deferred and could overlap with
     // the lifetime of a new Session object.

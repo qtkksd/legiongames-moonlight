@@ -173,8 +173,8 @@ void SLVideoDecoder::notifyOverlayUpdated(Overlay::OverlayType type)
 {
     // SLVideo supports only one visible overlay at a time. Since we don't have
     // stats like the FFmpeg-based decoders, we'll just support the status update
-    // overlay and nothing else.
-    if (type != Overlay::OverlayStatusUpdate) {
+    // and notification overlays and nothing else.
+    if (type != Overlay::OverlayStatusUpdate && type != Overlay::OverlayNotification) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                      "Unsupported overlay type: %d", type);
         return;

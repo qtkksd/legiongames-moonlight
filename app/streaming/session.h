@@ -172,6 +172,8 @@ private:
 
     void notifyMouseEmulationMode(bool enabled);
 
+    void checkSessionDeadline();
+
     void updateOptimalWindowDisplayMode();
 
     enum class DecoderAvailability {
@@ -272,6 +274,14 @@ private:
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;
     bool m_ShouldExit;
+
+    // End-of-booking notices (local countdown off SessionDeadline). One-shot
+    // per threshold; m_NoticeHideAtMs auto-hides the overlay.
+    bool m_NoticeFired30;
+    bool m_NoticeFired15;
+    bool m_NoticeFired5;
+    bool m_NoticeFiredFinal;
+    qint64 m_NoticeHideAtMs;
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;

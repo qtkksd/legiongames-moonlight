@@ -763,6 +763,11 @@ void VAAPIRenderer::notifyOverlayUpdated(Overlay::OverlayType type)
             overlayRect.x = 0;
             overlayRect.y = 0;
         }
+        else if (type == Overlay::OverlayNotification) {
+            // Top right (negative x is relative to the other side of the window)
+            overlayRect.x = -newSurface->w;
+            overlayRect.y = 0;
+        }
 
         overlayRect.w = newSurface->w;
         overlayRect.h = newSurface->h;

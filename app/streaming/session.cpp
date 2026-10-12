@@ -2,6 +2,7 @@
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
+#include "backend/sessiondeadline.h"
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -40,6 +41,7 @@
 #include <QGuiApplication>
 #include <QCursor>
 #include <QScreen>
+#include <QDateTime>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <QQuickOpenGLUtils>
@@ -562,6 +564,11 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_MouseEmulationRefCount(0),
       m_FlushingWindowEventsRef(0),
       m_ShouldExit(false),
+      m_NoticeFired30(false),
+      m_NoticeFired15(false),
+      m_NoticeFired5(false),
+      m_NoticeFiredFinal(false),
+      m_NoticeHideAtMs(0),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
       m_OpusDecoder(nullptr),
@@ -569,6 +576,53 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_AudioSampleCount(0),
       m_DropAudioEndTime(0)
 {
+}
+
+void Session::checkSessionDeadline()
+{
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+    // Auto-hide a notice once its display window elapses.
+    if (m_NoticeHideAtMs != 0 && nowMs >= m_NoticeHideAtMs) {
+        m_NoticeHideAtMs = 0;
+        m_OverlayManager.setOverlayState(Overlay::OverlayNotification, false);
+    }
+
+    if (!SessionDeadline::has()) {
+        return;
+    }
+
+    const qint64 remainingMin =
+        (SessionDeadline::endEpochMs() - nowMs) / 60000;
+
+    auto show = [this, nowMs](const QString& text) {
+        m_OverlayManager.updateOverlayText(Overlay::OverlayNotification,
+                                           text.toUtf8().constData());
+        m_OverlayManager.setOverlayState(Overlay::OverlayNotification, true);
+        m_NoticeHideAtMs = nowMs + 8000;
+    };
+
+    // Escalating warnings before the reservation/closing end, then one final
+    // nudge ~5 min before the hard stop (end + full grace). Users are only told
+    // half the grace as the "extra time" cushion.
+    if (!m_NoticeFired30 && remainingMin <= 30) {
+        m_NoticeFired30 = true;
+        show(QStringLiteral("Клуб закрывается через 30 мин\nНе начинайте новый матч"));
+    }
+    if (!m_NoticeFired15 && remainingMin <= 15) {
+        m_NoticeFired15 = true;
+        show(QStringLiteral("До закрытия 15 минут"));
+    }
+    if (!m_NoticeFired5 && remainingMin <= 5) {
+        m_NoticeFired5 = true;
+        show(QStringLiteral("Осталось 5 минут\n+%1 мин запаса")
+                 .arg(SessionDeadline::graceMinutes() / 2));
+    }
+    const int grace = SessionDeadline::graceMinutes();
+    if (!m_NoticeFiredFinal && grace > 5 && remainingMin <= -(grace - 5)) {
+        m_NoticeFiredFinal = true;
+        show(QStringLiteral("Осталось 5 минут до отключения\nЗавершите игру"));
+    }
 }
 
 Session::~Session()
@@ -1965,6 +2019,8 @@ void Session::exec()
     // because we want to suspend all Qt processing until the stream is over.
     SDL_Event event;
     for (;;) {
+        checkSessionDeadline();
+
 #if SDL_VERSION_ATLEAST(2, 0, 18) && !defined(STEAM_LINK)
         // SDL 2.0.18 has a proper wait event implementation that uses platform
         // support to block on events rather than polling on Windows, macOS, X11,
