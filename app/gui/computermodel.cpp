@@ -6,7 +6,9 @@
 // Legion NetBird overlay subnet (100.116.0.0/16) — matches netbirddiscovery.
 static bool isLegionNetbirdAddress(const NvAddress& addr)
 {
-    const QHostAddress host = addr.address();
+    // NvAddress::address() returns a QString; QHostAddress's QString ctor parses
+    // it (and yields a null address for an invalid/empty string).
+    const QHostAddress host(addr.address());
     return host.protocol() == QAbstractSocket::IPv4Protocol &&
            (host.toIPv4Address() & 0xFFFF0000u) == 0x64740000u;
 }
