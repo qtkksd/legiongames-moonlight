@@ -262,6 +262,9 @@ void LegionConnect::downloadSetupKeyFromReply(QNetworkReply* reply)
             SessionDeadline::set(
                 end.toMSecsSinceEpoch(),
                 deadlineObj.value(QStringLiteral("grace_minutes")).toInt());
+        } else {
+            // Present but unparseable — don't keep a stale value around.
+            SessionDeadline::clear();
         }
     } else {
         SessionDeadline::clear();
