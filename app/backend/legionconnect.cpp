@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QHostAddress>
 #include <QUrl>
 #include <QtDebug>
 
@@ -24,6 +25,9 @@
 // Dedicated NetBird profile used for the session so the user's own NetBird
 // login (the "default" profile) is never modified.
 #define LEGION_PROFILE_NAME "legiongames"
+
+// Legion NetBird overlay subnet (100.116.0.0/16) — matches netbirddiscovery.
+#define LEGION_NETBIRD_NET 0x64740000u
 
 LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
     QObject(parent),
@@ -178,6 +182,11 @@ void LegionConnect::start(const QString& code)
     m_StaleProfileIds.clear();
     m_StaleProfileActive = false;
     m_RemoveIndex = 0;
+    m_PinReply = nullptr;
+
+    // Step 1: drop previously-discovered Legion PCs (stale/duplicate hosts)
+    // before we set anything up. The target PC is re-added by addHost() later.
+    cleanupDiscoveredHosts();
 
     m_Stage = ExchangingCode;
     emit status(tr("Проверка кода..."));
@@ -444,8 +453,22 @@ void LegionConnect::submitPin()
     request.setRawHeader("Authorization", QByteArrayLiteral("Bearer ") + m_Token.toUtf8());
 
     QNetworkReply* reply = m_Nam->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    m_PinReply = reply;
+
+    // Bound the relay: if Django/Sunshine don't answer (mesh flap, slow verify)
+    // abort so the flow retries instead of hanging the modal progress dialog.
+    QTimer::singleShot(8000, this, [this, reply]() {
+        if (reply == m_PinReply && reply->isRunning()) {
+            qWarning() << "LegionConnect: PIN relay timeout — aborting";
+            reply->abort();
+        }
+    });
+
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
+        if (reply == m_PinReply) {
+            m_PinReply = nullptr;
+        }
 
         if (m_Stage != Pairing || m_PinDone) {
             return;
@@ -497,7 +520,15 @@ void LegionConnect::submitPin()
 
         m_PinDone = true;
         m_PinOk = false;
-        fail(errorText);
+        if (m_PairingOk) {
+            // The client is already authenticated with the host; don't error the
+            // user out over the server-side relay. Finish (activation is
+            // best-effort and idempotent server-side).
+            qWarning() << "LegionConnect: PIN relay failed after pairing OK — finishing";
+            checkFinished();
+        } else {
+            fail(errorText);
+        }
     });
 }
 
@@ -507,8 +538,16 @@ void LegionConnect::checkFinished()
         return;
     }
 
-    if (m_PairingOk && m_PinOk) {
+    // Success is driven by the client<->host pairing (== "authed into PC").
+    // The PIN relay is server-side bookkeeping; once it has settled (success,
+    // failure or timeout) we finish, so the modal progress dialog can never be
+    // left locked at 100% waiting on it.
+    if (m_PairingOk) {
         m_Stage = Idle;
+        if (!m_PinOk) {
+            qWarning() << "LegionConnect: finishing after pairing OK though the PIN"
+                          " relay did not confirm (activation is best-effort)";
+        }
         emit succeeded();
     }
 }
@@ -583,4 +622,27 @@ NvComputer* LegionConnect::findComputerByAddress(const QString& ip) const
         }
     }
     return nullptr;
+}
+
+void LegionConnect::cleanupDiscoveredHosts()
+{
+    const auto onNetbirdSubnet = [](const NvAddress& addr) {
+        const QHostAddress host = addr.address();
+        return host.protocol() == QAbstractSocket::IPv4Protocol &&
+               (host.toIPv4Address() & 0xFFFF0000u) == LEGION_NETBIRD_NET;
+    };
+
+    // Snapshot first: deleteHost() defers actual removal to a worker thread.
+    const auto hosts = m_Manager->getComputers();
+    int removed = 0;
+    for (NvComputer* computer : hosts) {
+        if (onNetbirdSubnet(computer->activeAddress) ||
+                onNetbirdSubnet(computer->localAddress)) {
+            m_Manager->deleteHost(computer);
+            ++removed;
+        }
+    }
+    if (removed > 0) {
+        qInfo() << "LegionConnect: cleared" << removed << "discovered Legion PC(s)";
+    }
 }

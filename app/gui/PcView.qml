@@ -653,17 +653,14 @@ CenteredGridView {
                 }
 
                 function onLegionConnectSucceeded() {
-                    // auth done: complete the bar, then close.
+                    // auth done: complete the bar and close immediately so the
+                    // modal never lingers (a 400ms timer + a slow server relay
+                    // previously left it locked at 100%).
+                    connectCodeDialog.connecting = false
                     connectCodeDialog.done = true
                     connectCodeDialog.progress = 100
-                    connectCloseTimer.start()
+                    connectCodeDialog.close()
                 }
-            }
-
-            Timer {
-                id: connectCloseTimer
-                interval: 400
-                onTriggered: connectCodeDialog.close()
             }
         }
     }
