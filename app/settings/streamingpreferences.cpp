@@ -56,6 +56,7 @@
 #define SER_LANGUAGE "language"
 #define SER_STREAMMIC "streammic"
 #define SER_MIC_CAPTURE_DEVICE "miccapturedevice"
+#define SER_SHORTCUTS "shortcuts"
 
 #define CURRENT_DEFAULT_VER 3
 
@@ -207,6 +208,21 @@ void StreamingPreferences::reload()
                                                                                                                  : UIDisplayMode::UI_MAXIMIZED)).toInt());
     language = static_cast<Language>(settings.value(SER_LANGUAGE,
                                                     static_cast<int>(Language::LANG_RU)).toInt());
+
+    // Load user-configurable in-stream shortcuts (numeric SDL records). Any
+    // missing/invalid entry falls back to the built-in default so the defaults
+    // always remain usable as backups.
+    m_Shortcuts = settings.value(SER_SHORTCUTS).toMap();
+    {
+        const QVariantMap defaults = defaultShortcuts();
+        for (auto it = defaults.constBegin(); it != defaults.constEnd(); ++it) {
+            const QVariantMap rec = m_Shortcuts.value(it.key()).toMap();
+            if (!rec.contains(QStringLiteral("sc")) || !rec.contains(QStringLiteral("mod")) ||
+                    rec.value(QStringLiteral("mod")).toInt() == 0) {
+                m_Shortcuts[it.key()] = it.value();
+            }
+        }
+    }
 
 
     // Perform default settings updates as required based on last default version
@@ -436,6 +452,196 @@ void StreamingPreferences::save()
     settings.setValue(SER_KEEPAWAKE, keepAwake);
     settings.setValue(SER_STREAMMIC, streamMicToHost);
     settings.setValue(SER_MIC_CAPTURE_DEVICE, micCaptureDevice);
+    settings.setValue(SER_SHORTCUTS, m_Shortcuts);
+}
+
+static QString sdlScancodeName(int sc)
+{
+    switch (sc) {
+    case SDL_SCANCODE_SPACE: return QStringLiteral("Space");
+    case SDL_SCANCODE_TAB: return QStringLiteral("Tab");
+    case SDL_SCANCODE_RETURN: return QStringLiteral("Return");
+    case SDL_SCANCODE_BACKSPACE: return QStringLiteral("Backspace");
+    case SDL_SCANCODE_DELETE: return QStringLiteral("Delete");
+    case SDL_SCANCODE_INSERT: return QStringLiteral("Insert");
+    case SDL_SCANCODE_HOME: return QStringLiteral("Home");
+    case SDL_SCANCODE_END: return QStringLiteral("End");
+    case SDL_SCANCODE_PAGEUP: return QStringLiteral("PageUp");
+    case SDL_SCANCODE_PAGEDOWN: return QStringLiteral("PageDown");
+    case SDL_SCANCODE_UP: return QStringLiteral("Up");
+    case SDL_SCANCODE_DOWN: return QStringLiteral("Down");
+    case SDL_SCANCODE_LEFT: return QStringLiteral("Left");
+    case SDL_SCANCODE_RIGHT: return QStringLiteral("Right");
+    case SDL_SCANCODE_MINUS: return QStringLiteral("-");
+    case SDL_SCANCODE_EQUALS: return QStringLiteral("=");
+    case SDL_SCANCODE_LEFTBRACKET: return QStringLiteral("[");
+    case SDL_SCANCODE_RIGHTBRACKET: return QStringLiteral("]");
+    case SDL_SCANCODE_SEMICOLON: return QStringLiteral(";");
+    case SDL_SCANCODE_APOSTROPHE: return QStringLiteral("'");
+    case SDL_SCANCODE_COMMA: return QStringLiteral(",");
+    case SDL_SCANCODE_PERIOD: return QStringLiteral(".");
+    case SDL_SCANCODE_SLASH: return QStringLiteral("/");
+    case SDL_SCANCODE_BACKSLASH: return QStringLiteral("\\");
+    case SDL_SCANCODE_GRAVE: return QStringLiteral("`");
+    default: return QString::number(sc);
+    }
+}
+
+bool StreamingPreferences::qtKeyToSdl(int qtKey, int qtModifiers, int& scanCode, int& keyCode, int& mod)
+{
+    mod = 0;
+    if (qtModifiers & Qt::ControlModifier) mod |= KMOD_CTRL;
+    if (qtModifiers & Qt::AltModifier)     mod |= KMOD_ALT;
+    if (qtModifiers & Qt::ShiftModifier)   mod |= KMOD_SHIFT;
+    if (qtModifiers & Qt::MetaModifier)    mod |= KMOD_GUI;
+
+    // Letters (SDL scancodes A..Z are contiguous; lowercase SDLK keycodes too)
+    if (qtKey >= Qt::Key_A && qtKey <= Qt::Key_Z) {
+        scanCode = SDL_SCANCODE_A + (qtKey - Qt::Key_A);
+        keyCode  = SDLK_a + (qtKey - Qt::Key_A);
+        return true;
+    }
+
+    // Digits (SDL defines SDL_SCANCODE_0 after 1..9, handled explicitly)
+    if (qtKey >= Qt::Key_0 && qtKey <= Qt::Key_9) {
+        const int d = qtKey - Qt::Key_0; // 0..9
+        scanCode = (d == 0) ? SDL_SCANCODE_0 : (SDL_SCANCODE_1 + (d - 1));
+        keyCode  = SDLK_0 + d;
+        return true;
+    }
+
+    // Function keys F1..F12
+    if (qtKey >= Qt::Key_F1 && qtKey <= Qt::Key_F12) {
+        scanCode = SDL_SCANCODE_F1 + (qtKey - Qt::Key_F1);
+        keyCode  = SDLK_F1 + (qtKey - Qt::Key_F1);
+        return true;
+    }
+
+    // Special / punctuation keys. We match on scancode at runtime, so the
+    // keycode here is only a best-effort secondary match.
+    struct { int qt; SDL_Scancode sc; } specials[] = {
+        { Qt::Key_Space, SDL_SCANCODE_SPACE },
+        { Qt::Key_Tab, SDL_SCANCODE_TAB },
+        { Qt::Key_Return, SDL_SCANCODE_RETURN },
+        { Qt::Key_Enter, SDL_SCANCODE_RETURN },
+        { Qt::Key_Backspace, SDL_SCANCODE_BACKSPACE },
+        { Qt::Key_Delete, SDL_SCANCODE_DELETE },
+        { Qt::Key_Insert, SDL_SCANCODE_INSERT },
+        { Qt::Key_Home, SDL_SCANCODE_HOME },
+        { Qt::Key_End, SDL_SCANCODE_END },
+        { Qt::Key_PageUp, SDL_SCANCODE_PAGEUP },
+        { Qt::Key_PageDown, SDL_SCANCODE_PAGEDOWN },
+        { Qt::Key_Up, SDL_SCANCODE_UP },
+        { Qt::Key_Down, SDL_SCANCODE_DOWN },
+        { Qt::Key_Left, SDL_SCANCODE_LEFT },
+        { Qt::Key_Right, SDL_SCANCODE_RIGHT },
+        { Qt::Key_Minus, SDL_SCANCODE_MINUS },
+        { Qt::Key_Equal, SDL_SCANCODE_EQUALS },
+        { Qt::Key_BracketLeft, SDL_SCANCODE_LEFTBRACKET },
+        { Qt::Key_BracketRight, SDL_SCANCODE_RIGHTBRACKET },
+        { Qt::Key_Semicolon, SDL_SCANCODE_SEMICOLON },
+        { Qt::Key_Apostrophe, SDL_SCANCODE_APOSTROPHE },
+        { Qt::Key_Comma, SDL_SCANCODE_COMMA },
+        { Qt::Key_Period, SDL_SCANCODE_PERIOD },
+        { Qt::Key_Slash, SDL_SCANCODE_SLASH },
+        { Qt::Key_Backslash, SDL_SCANCODE_BACKSLASH },
+        { Qt::Key_QuoteLeft, SDL_SCANCODE_GRAVE },
+    };
+    for (const auto& s : specials) {
+        if (qtKey == s.qt) {
+            scanCode = s.sc;
+            keyCode = SDL_SCANCODE_TO_KEYCODE(s.sc);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+QVariantMap StreamingPreferences::defaultShortcuts()
+{
+    const int mod = KMOD_CTRL | KMOD_ALT | KMOD_SHIFT;
+    auto rec = [mod](SDL_Scancode sc, SDL_Keycode sym) {
+        QVariantMap m;
+        m[QStringLiteral("sc")] = static_cast<int>(sc);
+        m[QStringLiteral("sym")] = static_cast<int>(sym);
+        m[QStringLiteral("mod")] = mod;
+        return m;
+    };
+
+    QVariantMap map;
+    map[QStringLiteral("quit")]              = rec(SDL_SCANCODE_Q, SDLK_q);
+    map[QStringLiteral("ungrab")]            = rec(SDL_SCANCODE_Z, SDLK_z);
+    map[QStringLiteral("toggleFullscreen")]  = rec(SDL_SCANCODE_X, SDLK_x);
+    map[QStringLiteral("toggleStats")]       = rec(SDL_SCANCODE_S, SDLK_s);
+    map[QStringLiteral("toggleMouseMode")]   = rec(SDL_SCANCODE_M, SDLK_m);
+    map[QStringLiteral("toggleCursorHide")]  = rec(SDL_SCANCODE_C, SDLK_c);
+    map[QStringLiteral("toggleMinimize")]    = rec(SDL_SCANCODE_D, SDLK_d);
+    map[QStringLiteral("pasteText")]         = rec(SDL_SCANCODE_V, SDLK_v);
+    map[QStringLiteral("togglePointerLock")] = rec(SDL_SCANCODE_L, SDLK_l);
+    map[QStringLiteral("quitAndExit")]       = rec(SDL_SCANCODE_E, SDLK_e);
+    return map;
+}
+
+QVariantMap StreamingPreferences::shortcutFor(const QString& action) const
+{
+    QVariantMap rec = m_Shortcuts.value(action).toMap();
+    if (!rec.contains(QStringLiteral("sc")) || rec.value(QStringLiteral("mod")).toInt() == 0) {
+        // Back up to the built-in default for this action.
+        rec = defaultShortcuts().value(action).toMap();
+    }
+    return rec;
+}
+
+QString StreamingPreferences::shortcutText(const QString& action) const
+{
+    const QVariantMap rec = shortcutFor(action);
+    const int mod = rec.value(QStringLiteral("mod")).toInt();
+    const int sc = rec.value(QStringLiteral("sc")).toInt();
+    const int sym = rec.value(QStringLiteral("sym")).toInt();
+
+    QString s;
+    if (mod & KMOD_CTRL)  s += QStringLiteral("Ctrl+");
+    if (mod & KMOD_ALT)   s += QStringLiteral("Alt+");
+    if (mod & KMOD_SHIFT) s += QStringLiteral("Shift+");
+    if (mod & KMOD_GUI)   s += QStringLiteral("Meta+");
+
+    if (sym >= 'a' && sym <= 'z') {
+        s += QString(QChar(sym)).toUpper();
+    }
+    else if (sym >= '0' && sym <= '9') {
+        s += QString(QChar(sym));
+    }
+    else {
+        s += sdlScancodeName(sc);
+    }
+    return s;
+}
+
+bool StreamingPreferences::setShortcut(const QString& action, int qtKey, int qtModifiers)
+{
+    int scanCode = 0, keyCode = 0, mod = 0;
+    if (!qtKeyToSdl(qtKey, qtModifiers, scanCode, keyCode, mod)) {
+        return false;
+    }
+    if (mod == 0) {
+        // Require at least one modifier so a bare gameplay key can't be hijacked.
+        return false;
+    }
+
+    QVariantMap rec;
+    rec[QStringLiteral("sc")] = scanCode;
+    rec[QStringLiteral("sym")] = keyCode;
+    rec[QStringLiteral("mod")] = mod;
+    m_Shortcuts[action] = rec;
+    emit shortcutsChanged();
+    return true;
+}
+
+void StreamingPreferences::resetShortcut(const QString& action)
+{
+    m_Shortcuts[action] = defaultShortcuts().value(action).toMap();
+    emit shortcutsChanged();
 }
 
 int StreamingPreferences::getDefaultBitrate(int width, int height, int fps, bool yuv444)

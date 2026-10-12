@@ -14,6 +14,25 @@ Flickable {
 
     signal languageChanged()
 
+    // Keyboard shortcut recording state
+    property bool recordingShortcut: false
+    property string recordingAction: ""
+
+    function isShortcutModifierKey(key) {
+        return key === Qt.Key_Control || key === Qt.Key_Alt || key === Qt.Key_Shift ||
+               key === Qt.Key_Meta || key === Qt.Key_AltGr || key === Qt.Key_CapsLock ||
+               key === Qt.Key_NumLock || key === Qt.Key_ScrollLock
+    }
+
+    function applyShortcut(action, combo) {
+        for (var i = 0; i < shortcutsModel.count; i++) {
+            if (shortcutsModel.get(i).actionId === action) {
+                shortcutsModel.setProperty(i, "combo", combo)
+                break
+            }
+        }
+    }
+
     boundsBehavior: Flickable.OvershootBounds
 
     contentWidth: settingsColumn1.width > settingsColumn2.width ? settingsColumn1.width : settingsColumn2.width
@@ -91,6 +110,43 @@ Flickable {
         // Also save preferences on destruction, since we won't get a
         // deactivating callback if the user just closes Moonlight
         StreamingPreferences.save()
+    }
+
+    // Captures the key combination while the user is recording a shortcut.
+    Item {
+        id: shortcutRecorder
+        width: 0
+        height: 0
+        focus: settingsPage.recordingShortcut
+
+        Keys.onPressed: {
+            if (!settingsPage.recordingShortcut) {
+                return
+            }
+
+            event.accepted = true
+
+            if (event.key === Qt.Key_Escape) {
+                settingsPage.recordingShortcut = false
+                settingsPage.recordingAction = ""
+                settingsPage.forceActiveFocus()
+                return
+            }
+
+            if (settingsPage.isShortcutModifierKey(event.key)) {
+                return
+            }
+
+            if (StreamingPreferences.setShortcut(settingsPage.recordingAction,
+                                                 event.key, event.modifiers)) {
+                settingsPage.applyShortcut(settingsPage.recordingAction,
+                                           StreamingPreferences.shortcutText(settingsPage.recordingAction))
+            }
+
+            settingsPage.recordingShortcut = false
+            settingsPage.recordingAction = ""
+            settingsPage.forceActiveFocus()
+        }
     }
 
     Column {
@@ -1496,6 +1552,73 @@ Flickable {
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
                     ToolTip.text: qsTr("Allows Moonlight to capture gamepad inputs even if it's not the current window in focus")
+                }
+            }
+        }
+
+        GroupBox {
+            id: shortcutsGroupBox
+            width: (parent.width - (parent.leftPadding + parent.rightPadding))
+            padding: 12
+            title: "<font color=\"skyblue\">" + qsTr("Shortcuts") + "</font>"
+            font.pointSize: 12
+
+            Column {
+                anchors.fill: parent
+                spacing: 5
+
+                Label {
+                    width: parent.width
+                    text: qsTr("Click a shortcut, then press the key combination you want to use. Press Escape to cancel.")
+                    font.pointSize: 11
+                    wrapMode: Text.Wrap
+                    opacity: 0.8
+                }
+
+                Repeater {
+                    model: ListModel {
+                        id: shortcutsModel
+                        ListElement { actionId: "quit"; label: "Отключиться от трансляции"; combo: "" }
+                        ListElement { actionId: "ungrab"; label: "Освободить клавиатуру и мышь"; combo: "" }
+                        ListElement { actionId: "toggleFullscreen"; label: "Полноэкранный режим"; combo: "" }
+                        ListElement { actionId: "toggleStats"; label: "Статистика производительности"; combo: "" }
+                        ListElement { actionId: "toggleMouseMode"; label: "Режим мыши"; combo: "" }
+                        ListElement { actionId: "toggleCursorHide"; label: "Скрыть курсор"; combo: "" }
+                        ListElement { actionId: "toggleMinimize"; label: "Свернуть окно"; combo: "" }
+                        ListElement { actionId: "pasteText"; label: "Вставить текст"; combo: "" }
+                        ListElement { actionId: "togglePointerLock"; label: "Блокировка указателя мыши"; combo: "" }
+                        ListElement { actionId: "quitAndExit"; label: "Выйти из игры и Moonlight"; combo: "" }
+                    }
+
+                    delegate: RowLayout {
+                        width: parent.width
+                        spacing: 8
+
+                        Label {
+                            text: model.label
+                            font.pointSize: 12
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+
+                        Button {
+                            id: shortcutButton
+                            text: settingsPage.recordingShortcut && settingsPage.recordingAction === model.actionId
+                                  ? qsTr("Нажмите...") : model.combo
+                            onClicked: {
+                                settingsPage.recordingAction = model.actionId
+                                settingsPage.recordingShortcut = true
+                                shortcutRecorder.forceActiveFocus()
+                            }
+                        }
+                    }
+
+                    Component.onCompleted: {
+                        for (var i = 0; i < shortcutsModel.count; i++) {
+                            var action = shortcutsModel.get(i).actionId
+                            shortcutsModel.setProperty(i, "combo", StreamingPreferences.shortcutText(action))
+                        }
+                    }
                 }
             }
         }

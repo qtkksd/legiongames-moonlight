@@ -4,6 +4,7 @@
 #include <QRect>
 #include <QQmlEngine>
 #include <QStringList>
+#include <QVariantMap>
 
 class StreamingPreferences : public QObject
 {
@@ -152,6 +153,15 @@ public:
     Q_INVOKABLE bool retranslate();
     Q_INVOKABLE QStringList getMicCaptureDeviceNames() const;
 
+    // User-configurable in-stream keyboard shortcuts. Each action maps to an
+    // SDL {sc, sym, mod} record so no name-based SDL lookups (which depend on
+    // the keyboard layout being initialised) are ever needed at runtime.
+    static QVariantMap defaultShortcuts();
+    QVariantMap shortcutFor(const QString& action) const;
+    Q_INVOKABLE QString shortcutText(const QString& action) const;
+    Q_INVOKABLE bool setShortcut(const QString& action, int qtKey, int qtModifiers);
+    Q_INVOKABLE void resetShortcut(const QString& action);
+
     // Directly accessible members for preferences
     int width;
     int height;
@@ -232,12 +242,16 @@ signals:
     void streamMicToHostChanged();
     void micCaptureDeviceChanged();
     void languageChanged();
+    void shortcutsChanged();
 
 private:
     explicit StreamingPreferences(QQmlEngine *qmlEngine);
 
     QString getSuffixFromLanguage(Language lang);
 
+    static bool qtKeyToSdl(int qtKey, int qtModifiers, int& scanCode, int& keyCode, int& mod);
+
     QQmlEngine* m_QmlEngine;
+    QVariantMap m_Shortcuts;
 };
 
