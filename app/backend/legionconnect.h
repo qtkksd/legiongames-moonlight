@@ -58,10 +58,6 @@ private:
     void submitPin();
     void checkFinished();
 
-    // Remove previously-discovered Legion PCs (hosts on the Legion NetBird
-    // subnet) so stale/duplicate entries don't linger across sessions.
-    void cleanupDiscoveredHosts();
-
     // NetBird profile management
     void parseProfileList(const QByteArray& out);
     void parseAddedProfile(const QByteArray& out);

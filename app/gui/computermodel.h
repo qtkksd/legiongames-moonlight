@@ -33,6 +33,11 @@ public:
 
     Q_INVOKABLE void deleteComputer(int computerIndex);
 
+    // Remove every discovered Legion PC (host on the Legion NetBird subnet),
+    // updating the model so no stale/dangling entries remain. Used at the start
+    // of the one-time-code connect flow.
+    Q_INVOKABLE void removeDiscoveredComputers();
+
     Q_INVOKABLE QString generatePinString();
 
     Q_INVOKABLE void pairComputer(int computerIndex, QString pin);

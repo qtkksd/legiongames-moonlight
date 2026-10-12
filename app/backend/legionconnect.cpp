@@ -13,7 +13,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
-#include <QHostAddress>
 #include <QUrl>
 #include <QtDebug>
 
@@ -25,9 +24,6 @@
 // Dedicated NetBird profile used for the session so the user's own NetBird
 // login (the "default" profile) is never modified.
 #define LEGION_PROFILE_NAME "legiongames"
-
-// Legion NetBird overlay subnet (100.116.0.0/16) — matches netbirddiscovery.
-#define LEGION_NETBIRD_NET 0x64740000u
 
 LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
     QObject(parent),
@@ -184,9 +180,8 @@ void LegionConnect::start(const QString& code)
     m_RemoveIndex = 0;
     m_PinReply = nullptr;
 
-    // Step 1: drop previously-discovered Legion PCs (stale/duplicate hosts)
-    // before we set anything up. The target PC is re-added by addHost() later.
-    cleanupDiscoveredHosts();
+    // NOTE: previously-discovered Legion PCs are cleared from the UI model in
+    // PcView.qml (computerModel.removeDiscoveredComputers()) before start().
 
     m_Stage = ExchangingCode;
     emit status(tr("Проверка кода..."));
@@ -622,27 +617,4 @@ NvComputer* LegionConnect::findComputerByAddress(const QString& ip) const
         }
     }
     return nullptr;
-}
-
-void LegionConnect::cleanupDiscoveredHosts()
-{
-    const auto onNetbirdSubnet = [](const NvAddress& addr) {
-        const QHostAddress host = addr.address();
-        return host.protocol() == QAbstractSocket::IPv4Protocol &&
-               (host.toIPv4Address() & 0xFFFF0000u) == LEGION_NETBIRD_NET;
-    };
-
-    // Snapshot first: deleteHost() defers actual removal to a worker thread.
-    const auto hosts = m_Manager->getComputers();
-    int removed = 0;
-    for (NvComputer* computer : hosts) {
-        if (onNetbirdSubnet(computer->activeAddress) ||
-                onNetbirdSubnet(computer->localAddress)) {
-            m_Manager->deleteHost(computer);
-            ++removed;
-        }
-    }
-    if (removed > 0) {
-        qInfo() << "LegionConnect: cleared" << removed << "discovered Legion PC(s)";
-    }
 }

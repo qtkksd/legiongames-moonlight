@@ -1,6 +1,15 @@
 #include "computermodel.h"
 
+#include <QHostAddress>
 #include <QThreadPool>
+
+// Legion NetBird overlay subnet (100.116.0.0/16) — matches netbirddiscovery.
+static bool isLegionNetbirdAddress(const NvAddress& addr)
+{
+    const QHostAddress host = addr.address();
+    return host.protocol() == QAbstractSocket::IPv4Protocol &&
+           (host.toIPv4Address() & 0xFFFF0000u) == 0x64740000u;
+}
 
 ComputerModel::ComputerModel(QObject* object)
     : QAbstractListModel(object) {}
@@ -147,6 +156,23 @@ void ComputerModel::deleteComputer(int computerIndex)
     m_Computers.removeAt(computerIndex);
 
     endRemoveRows();
+}
+
+void ComputerModel::removeDiscoveredComputers()
+{
+    // Remove back-to-front so indices in the model stay valid.
+    for (int i = m_Computers.count() - 1; i >= 0; --i) {
+        NvComputer* computer = m_Computers[i];
+        if (!isLegionNetbirdAddress(computer->activeAddress) &&
+                !isLegionNetbirdAddress(computer->localAddress)) {
+            continue;
+        }
+
+        beginRemoveRows(QModelIndex(), i, i);
+        m_ComputerManager->deleteHost(computer);
+        m_Computers.removeAt(i);
+        endRemoveRows();
+    }
 }
 
 class DeferredWakeHostTask : public QRunnable

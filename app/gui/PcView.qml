@@ -485,6 +485,9 @@ CenteredGridView {
 
         function startConnect() {
             if (connectCodeField.text.length > 0) {
+                // Step 1: clear previously-discovered Legion PCs (stale/dup
+                // entries) from the model before starting the connect flow.
+                pcGrid.computerModel.removeDiscoveredComputers()
                 connecting = true
                 connectCodeStatus.color = "#f0a500"
                 connectCodeStatus.text = qsTr("Проверка кода...")
