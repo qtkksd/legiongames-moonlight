@@ -176,6 +176,28 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
     }
 }
 
+// Returns true when the event's modifier state satisfies the combo's required
+// modifiers. Comparison is per modifier CLASS (Ctrl/Alt/Shift/Gui), because SDL
+// reports only the specific left/right bits that are held (e.g. Left Ctrl+Alt+
+// Shift = 0x141), while KMOD_CTRL|KMOD_ALT|KMOD_SHIFT = 0x3C3 also includes the
+// right-hand bits — so a whole-mask equality test can never match.
+static bool modifierMaskMatches(Uint16 eventMod, Uint16 required)
+{
+    if ((required & KMOD_CTRL) && !(eventMod & KMOD_CTRL)) {
+        return false;
+    }
+    if ((required & KMOD_ALT) && !(eventMod & KMOD_ALT)) {
+        return false;
+    }
+    if ((required & KMOD_SHIFT) && !(eventMod & KMOD_SHIFT)) {
+        return false;
+    }
+    if ((required & KMOD_GUI) && !(eventMod & KMOD_GUI)) {
+        return false;
+    }
+    return true;
+}
+
 void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
 {
     short keyCode;
@@ -214,7 +236,7 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
 
         for (int i = 0; i < KeyComboMax; i++) {
             if (m_SpecialKeyCombos[i].enabled &&
-                    (event->keysym.mod & m_SpecialKeyCombos[i].mod) == m_SpecialKeyCombos[i].mod &&
+                    modifierMaskMatches(event->keysym.mod, m_SpecialKeyCombos[i].mod) &&
                     event->keysym.sym == m_SpecialKeyCombos[i].keyCode) {
                 performSpecialKeyCombo(m_SpecialKeyCombos[i].keyCombo);
                 return;
@@ -223,7 +245,7 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
 
         for (int i = 0; i < KeyComboMax; i++) {
             if (m_SpecialKeyCombos[i].enabled &&
-                    (event->keysym.mod & m_SpecialKeyCombos[i].mod) == m_SpecialKeyCombos[i].mod &&
+                    modifierMaskMatches(event->keysym.mod, m_SpecialKeyCombos[i].mod) &&
                     event->keysym.scancode == m_SpecialKeyCombos[i].scanCode) {
                 performSpecialKeyCombo(m_SpecialKeyCombos[i].keyCombo);
                 return;
