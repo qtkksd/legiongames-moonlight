@@ -99,17 +99,6 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
             def.platformEnabled && m_SpecialKeyCombos[def.combo].mod != 0;
     }
 
-    // Diagnostic: dump the resolved combo table so we can see exactly what the
-    // session is matching against (sym/scancode/mod/enabled per action).
-    for (int i = 0; i < KeyComboMax; i++) {
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Shortcut map[%d]: sym=0x%x sc=%d mod=0x%x enabled=%d",
-                    i, (unsigned) m_SpecialKeyCombos[i].keyCode,
-                    (int) m_SpecialKeyCombos[i].scanCode,
-                    (unsigned) m_SpecialKeyCombos[i].mod,
-                    m_SpecialKeyCombos[i].enabled);
-    }
-
 #ifdef DEBUG_MIC_AB_CAPTURE
     // Debug-only mic A/B capture trigger. Bound to Ctrl+Alt+Shift+R ("R" for
     // "record"); compiled out unless DEBUG_MIC_AB_CAPTURE is set at qmake time.

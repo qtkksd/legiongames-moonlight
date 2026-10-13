@@ -7,6 +7,12 @@
 #include "streaming/session.h"
 #include "streaming/streamutils.h"
 
+// Embedded at build time (see app.pro); fall back to the version string for
+// local builds so the UI always has something to show.
+#ifndef LG_COMMIT
+#define LG_COMMIT VERSION_STR
+#endif
+
 #ifdef Q_OS_WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -47,6 +53,7 @@ private:
 SystemProperties::SystemProperties()
 {
     versionString = QString(VERSION_STR);
+    commitString = QString::fromLatin1(LG_COMMIT);
     hasDesktopEnvironment = WMUtils::isRunningDesktopEnvironment();
     isRunningWayland = WMUtils::isRunningWayland();
     isRunningXWayland = isRunningWayland && QGuiApplication::platformName() == "xcb";
