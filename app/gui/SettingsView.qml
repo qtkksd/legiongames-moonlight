@@ -17,6 +17,7 @@ Flickable {
     // Keyboard shortcut recording state
     property bool recordingShortcut: false
     property string recordingAction: ""
+    property string shortcutError: ""
 
     function isShortcutModifierKey(key) {
         return key === Qt.Key_Control || key === Qt.Key_Alt || key === Qt.Key_Shift ||
@@ -119,7 +120,7 @@ Flickable {
         height: 0
         focus: settingsPage.recordingShortcut
 
-        Keys.onPressed: {
+        Keys.onPressed: function(event) {
             if (!settingsPage.recordingShortcut) {
                 return
             }
@@ -129,6 +130,7 @@ Flickable {
             if (event.key === Qt.Key_Escape) {
                 settingsPage.recordingShortcut = false
                 settingsPage.recordingAction = ""
+                settingsPage.shortcutError = ""
                 settingsPage.forceActiveFocus()
                 return
             }
@@ -139,13 +141,17 @@ Flickable {
 
             if (StreamingPreferences.setShortcut(settingsPage.recordingAction,
                                                  event.key, event.modifiers)) {
+                settingsPage.shortcutError = ""
                 settingsPage.applyShortcut(settingsPage.recordingAction,
                                            StreamingPreferences.shortcutText(settingsPage.recordingAction))
+                settingsPage.recordingShortcut = false
+                settingsPage.recordingAction = ""
+                settingsPage.forceActiveFocus()
+            } else {
+                // Keep recording so the user can just try again, and say why it
+                // was rejected (a bare key would be hijacked from the game).
+                settingsPage.shortcutError = qsTr("Нужен хотя бы один модификатор (Ctrl, Alt, Shift или Meta) вместе с клавишей")
             }
-
-            settingsPage.recordingShortcut = false
-            settingsPage.recordingAction = ""
-            settingsPage.forceActiveFocus()
         }
     }
 
@@ -1575,6 +1581,15 @@ Flickable {
                     opacity: 0.8
                 }
 
+                Label {
+                    width: parent.width
+                    visible: settingsPage.shortcutError !== ""
+                    text: settingsPage.shortcutError
+                    color: "#e74c3c"
+                    font.pointSize: 11
+                    wrapMode: Text.Wrap
+                }
+
                 Repeater {
                     model: ListModel {
                         id: shortcutsModel
@@ -1608,6 +1623,7 @@ Flickable {
                             onClicked: {
                                 settingsPage.recordingAction = model.actionId
                                 settingsPage.recordingShortcut = true
+                                settingsPage.shortcutError = ""
                                 shortcutRecorder.forceActiveFocus()
                             }
                         }
