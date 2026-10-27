@@ -1,7 +1,6 @@
 pipeline {
   agent none
   options { timestamps(); disableConcurrentBuilds() }
-  triggers { pollSCM('H/2 * * * *') }
   stages {
     stage('Prepare') {
       agent { label 'controller' }
