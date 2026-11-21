@@ -23,6 +23,23 @@ LegionView {
         }
     }
 
+    Connections {
+        target: wallet.api
+        ignoreUnknownSignals: true
+
+        function onResponse(op, data) {
+            if (op === "wallet") {
+                wallet.clearError()
+            }
+        }
+
+        function onFailed(op, code, message) {
+            if (op === "wallet") {
+                wallet.showError(code, message)
+            }
+        }
+    }
+
     function focusFirst() {
         if (rows.length > 0 && firstButton !== null) {
             firstButton.forceActiveFocus()

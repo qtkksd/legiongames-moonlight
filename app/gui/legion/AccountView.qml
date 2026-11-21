@@ -55,10 +55,6 @@ LegionView {
         function onFailed(op, code, message) {
             account.showError(code, message)
         }
-
-        function onResponse(op, data) {
-            account.clearError()
-        }
     }
 
     PageHeader {
