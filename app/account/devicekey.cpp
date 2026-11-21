@@ -583,7 +583,9 @@ bool DeviceKey::verifyRaw(const QJsonObject &jwk, const QByteArray &message,
 #else
             // OpenSSL 1.0.2 (SteamLink SDK) only has the streaming API.
             valid = EVP_DigestVerifyUpdate(ctx, msg, msgLen) == 1 &&
-                    EVP_DigestVerifyFinal(ctx, sig, sigLen) == 1;
+                    EVP_DigestVerifyFinal(ctx,
+                                          const_cast<unsigned char *>(sig),
+                                          sigLen) == 1;
 #endif
         }
         freeMdContext(ctx);
