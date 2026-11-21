@@ -299,7 +299,7 @@ DeviceKey *DeviceKey::fromPkcs8(const QByteArray &der)
         return nullptr;
     }
 
-    BIO *bio = BIO_new_mem_buf(der.constData(), der.size());
+    BIO *bio = BIO_new_mem_buf(const_cast<char *>(der.constData()), der.size());
     if (bio == nullptr) {
         return nullptr;
     }
@@ -569,14 +569,23 @@ bool DeviceKey::verifyRaw(const QJsonObject &jwk, const QByteArray &message,
 
     EVP_MD_CTX *ctx = createMdContext();
     if (ctx != nullptr && !derSignature.isEmpty()) {
-        valid = EVP_DigestVerifyInit(ctx, nullptr, EVP_sha256(), nullptr, key) == 1 &&
-                EVP_DigestVerify(ctx,
-                                 reinterpret_cast<const unsigned char *>(
-                                     derSignature.constData()),
-                                 static_cast<size_t>(derSignature.size()),
-                                 reinterpret_cast<const unsigned char *>(
-                                     message.constData()),
-                                 static_cast<size_t>(message.size())) == 1;
+        const unsigned char *sig =
+            reinterpret_cast<const unsigned char *>(derSignature.constData());
+        const size_t sigLen = static_cast<size_t>(derSignature.size());
+        const unsigned char *msg =
+            reinterpret_cast<const unsigned char *>(message.constData());
+        const size_t msgLen = static_cast<size_t>(message.size());
+
+        if (EVP_DigestVerifyInit(ctx, nullptr, EVP_sha256(), nullptr, key) == 1) {
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L
+            // OpenSSL 1.1.1+ has the one-shot verifier.
+            valid = EVP_DigestVerify(ctx, sig, sigLen, msg, msgLen) == 1;
+#else
+            // OpenSSL 1.0.2 (SteamLink SDK) only has the streaming API.
+            valid = EVP_DigestVerifyUpdate(ctx, msg, msgLen) == 1 &&
+                    EVP_DigestVerifyFinal(ctx, sig, sigLen) == 1;
+#endif
+        }
         freeMdContext(ctx);
     }
 
