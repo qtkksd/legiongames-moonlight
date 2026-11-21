@@ -1,6 +1,13 @@
 QT += core quick network quickcontrols2 svg
 CONFIG += c++17
 
+# The account modules contain Russian user-facing strings as UTF-8 literals.
+# MSVC otherwise interprets source files in the active code page and mangles
+# them on non-Russian Windows installations.
+msvc {
+    QMAKE_CXXFLAGS += /utf-8
+}
+
 unix:!macx {
     TARGET = moonlight
 } else {
@@ -47,6 +54,9 @@ win32 {
 
     INCLUDEPATH += $$PWD/../libs/windows/include
     LIBS += ws2_32.lib winmm.lib dxva2.lib ole32.lib gdi32.lib user32.lib d3d9.lib dwmapi.lib dbghelp.lib
+    # DPAPI (CryptProtectData) and the SDDL helpers for user-only ACLs on the
+    # vault blob and the recovery kit.
+    LIBS += crypt32.lib advapi32.lib
 }
 macx:!disable-prebuilts {
     INCLUDEPATH += $$PWD/../libs/mac/include $$PWD/../libs/mac/include/SDL2
@@ -139,6 +149,18 @@ unix:if(!macx|disable-prebuilts) {
             }
         }
     }
+
+    # Linux vault backend. Without libsecret-1 at configure time the vault
+    # reports unavailable and account actions fail closed; there is no
+    # plaintext fallback.
+    packagesExist(libsecret-1) {
+        message(libsecret vault backend enabled)
+        DEFINES += HAVE_LIBSECRET
+        PKGCONFIG += libsecret-1
+    }
+    else {
+        message(libsecret-1 not found: the account vault will be unavailable)
+    }
 }
 win32 {
     LIBS += -llibssl -llibcrypto -lSDL2 -lSDL2_ttf -lavcodec -lavutil -lswscale -lopus -ldxgi -ld3d11 -llibplacebo
@@ -154,10 +176,22 @@ macx {
     }
 
     LIBS += -lobjc -framework VideoToolbox -framework AVFoundation -framework CoreVideo -framework CoreGraphics -framework CoreMedia -framework AppKit -framework Metal -framework QuartzCore
+    # Keychain vault backend (compile-guarded; macOS is not a supported target
+    # until the build can be signed/notarized).
+    LIBS += -framework Security -framework CoreFoundation
     CONFIG += ffmpeg
 }
 
 SOURCES += \
+    account/accountclient.cpp \
+    account/consent.cpp \
+    account/cryptoutil.cpp \
+    account/deeplink.cpp \
+    account/devicekey.cpp \
+    account/legionapi.cpp \
+    account/recoverykit.cpp \
+    account/updatemanifest.cpp \
+    account/vault.cpp \
     backend/nvaddress.cpp \
     backend/nvapp.cpp \
     cli/pair.cpp \
@@ -202,6 +236,15 @@ SOURCES += \
     wm.cpp
 
 HEADERS += \
+    account/accountclient.h \
+    account/consent.h \
+    account/cryptoutil.h \
+    account/deeplink.h \
+    account/devicekey.h \
+    account/legionapi.h \
+    account/recoverykit.h \
+    account/updatemanifest.h \
+    account/vault.h \
     SDL_compat.h \
     backend/nvaddress.h \
     backend/nvapp.h \
