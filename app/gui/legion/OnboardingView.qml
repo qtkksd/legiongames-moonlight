@@ -21,29 +21,28 @@ LegionView {
     property bool pdnChecked: false
     property bool submitting: false
 
-    // The hostname is not exposed to QML by the current backend; the field is
-    // prefilled with a readable default and sent to register(label).
-    property string deviceLabel: qsTr("Мой компьютер")
+    // Legal texts are served by the website; the app links out and does not
+    // bundle them. These URLs are the production documents.
+    readonly property string agreementDocUrl: "https://legiongames.ru/user-agreement.pdf"
+    readonly property string policyDocUrl: "https://legiongames.ru/policy.pdf"
+    readonly property string consentDocUrl: "https://legiongames.ru/privacy-consent.pdf"
+
+    // Prefill from the OS hostname (QSysInfo::machineHostName via the backend);
+    // the user can still edit it before creating the account.
+    property string deviceLabel: (api && api.suggestedDeviceLabel)
+                                  ? api.suggestedDeviceLabel
+                                  : qsTr("Мой компьютер")
 
     readonly property bool canRegister: agreementChecked && pdnChecked &&
                                         deviceLabel.trim().length > 0 &&
                                         !submitting && !serverBusy
 
-    // Legal documents come from the backend property; the URLs are only used
-    // to open the exact served text for each checkbox.
-    readonly property var legalDocuments: (api && api.legalDocuments) ? api.legalDocuments : []
-    readonly property string agreementUrl: Api.documentUrlIn(legalDocuments, "user_agreement")
-    readonly property string pdnUrl: Api.documentUrlIn(legalDocuments, "pdn_consent")
-    readonly property bool hasDocumentLinks: agreementUrl.length > 0 || pdnUrl.length > 0
     readonly property string ageNotice: api ? (api.ageNotice || "") : ""
     readonly property string ageNoticeText: ageNotice.length > 0
                                             ? ageNotice
                                             : qsTr("Сервис предназначен для лиц старше 18 лет.")
 
     function activate() {
-        if (legalDocuments.length === 0) {
-            Api.getLegalDocuments(api)
-        }
         if (!wordsPending) {
             agreementBox.forceActiveFocus()
         }
@@ -137,7 +136,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: qsTr("LegionGames")
                         color: Theme.accent
-                        font.pointSize: Theme.fontSubtitle
+                        font.pointSize: Theme.fontTitle + 2
                         font.bold: true
                     }
 
@@ -145,16 +144,16 @@ LegionView {
                         text: onboarding.reconsent ? qsTr("Документы обновились")
                                                    : qsTr("Шаг 1 из 2")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall
+                        font.pointSize: Theme.fontSmall + 1
                     }
                 }
 
                 Label {
                     Layout.fillWidth: true
                     text: onboarding.reconsent ? qsTr("Примите обновлённые документы")
-                                               : qsTr("Создайте аккаунт")
+                                               : qsTr("Создание аккаунта")
                     color: Theme.text
-                    font.pointSize: Theme.fontHero
+                    font.pointSize: Theme.fontHero + 4
                     font.bold: true
                     wrapMode: Text.Wrap
                 }
@@ -162,10 +161,10 @@ LegionView {
                 Label {
                     Layout.fillWidth: true
                     visible: !onboarding.reconsent && !onboarding.wordsPending
-                    text: qsTr("Аккаунт создаётся на этом компьютере. Ключ устройства хранится " +
-                               "в защищённом хранилище системы, пароль не нужен.")
+                    text: qsTr("Аккаунт создаётся в этом браузере. Логина и пароля нет — " +
+                               "только ключ устройства и 8 слов восстановления.")
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontBody
+                    font.pointSize: Theme.fontBody + 3
                     wrapMode: Text.Wrap
                 }
 
@@ -204,67 +203,75 @@ LegionView {
                 ColumnLayout {
                     Layout.fillWidth: true
                     visible: !onboarding.wordsPending
-                    spacing: Theme.spaceS
+                    spacing: Theme.spaceM
 
-                    CheckBox {
-                        id: agreementBox
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: qsTr("Я принимаю Пользовательское соглашение")
-                        font.pointSize: Theme.fontBody
-                        checked: onboarding.agreementChecked
-                        onToggled: onboarding.agreementChecked = checked
+                        spacing: Theme.spaceS
+
+                        CheckBox {
+                            id: agreementBox
+                            Layout.alignment: Qt.AlignTop
+                            checked: onboarding.agreementChecked
+                            onToggled: onboarding.agreementChecked = checked
+                            Accessible.name: qsTr("Я принимаю пользовательское соглашение")
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            textFormat: Text.RichText
+                            text: qsTr("Я принимаю <a href=\"%1\">пользовательское соглашение</a>.")
+                                      .arg(onboarding.agreementDocUrl)
+                            color: Theme.text
+                            font.pointSize: Theme.fontBody + 3
+                            wrapMode: Text.Wrap
+                            onLinkActivated: onboarding.openUrl(link)
+                        }
                     }
 
-                    LegionButton {
-                        Layout.leftMargin: Theme.spaceXl
-                        kind: "ghost"
-                        compact: true
-                        visible: onboarding.agreementUrl.length > 0
-                        text: qsTr("Открыть текст")
-                        onClicked: onboarding.openUrl(onboarding.agreementUrl)
-                    }
-
-                    CheckBox {
-                        id: pdnBox
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: qsTr("Я даю согласие на обработку персональных данных")
-                        font.pointSize: Theme.fontBody
-                        checked: onboarding.pdnChecked
-                        onToggled: onboarding.pdnChecked = checked
-                    }
+                        spacing: Theme.spaceS
 
-                    LegionButton {
-                        Layout.leftMargin: Theme.spaceXl
-                        kind: "ghost"
-                        compact: true
-                        visible: onboarding.pdnUrl.length > 0
-                        text: qsTr("Открыть текст")
-                        onClicked: onboarding.openUrl(onboarding.pdnUrl)
+                        CheckBox {
+                            id: pdnBox
+                            Layout.alignment: Qt.AlignTop
+                            checked: onboarding.pdnChecked
+                            onToggled: onboarding.pdnChecked = checked
+                            Accessible.name: qsTr("Я принимаю политику обработки ПДн и даю согласие на обработку")
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            textFormat: Text.RichText
+                            text: qsTr("Я принимаю <a href=\"%1\">политику обработки ПДн</a> " +
+                                       "и даю <a href=\"%2\">согласие на обработку</a>.")
+                                      .arg(onboarding.policyDocUrl)
+                                      .arg(onboarding.consentDocUrl)
+                            color: Theme.text
+                            font.pointSize: Theme.fontBody + 3
+                            wrapMode: Text.Wrap
+                            onLinkActivated: onboarding.openUrl(link)
+                        }
                     }
 
                     Label {
                         Layout.fillWidth: true
                         text: onboarding.ageNoticeText
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall
-                        wrapMode: Text.Wrap
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        visible: !onboarding.hasDocumentLinks
-                        text: qsTr("Полные тексты документов — на сайте legiongames.ru")
-                        color: Theme.textDim
-                        font.pointSize: Theme.fontCaption
+                        font.pointSize: Theme.fontSmall + 2
                         wrapMode: Text.Wrap
                     }
 
                     LegionButton {
-                        Layout.leftMargin: Theme.spaceXl
+                        Layout.alignment: Qt.AlignLeft
                         kind: "ghost"
                         compact: true
-                        visible: !onboarding.hasDocumentLinks
-                        text: qsTr("Открыть сайт")
+                        text: qsTr("Открыть сайт legiongames.ru")
+                        background: Rectangle {
+                            color: Theme.bg
+                            border.width: 0
+                        }
                         onClicked: onboarding.openUrl("https://legiongames.ru/")
                     }
                 }
@@ -278,7 +285,7 @@ LegionView {
                     Label {
                         text: qsTr("Имя этого компьютера")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall
+                        font.pointSize: Theme.fontSmall + 2
                     }
 
                     TextField {
@@ -287,6 +294,7 @@ LegionView {
                         text: onboarding.deviceLabel
                         maximumLength: 32
                         placeholderText: qsTr("Например, DESKTOP-01")
+                        font.pointSize: Theme.fontBody + 2
                         onTextChanged: onboarding.deviceLabel = text
                         Keys.onReturnPressed: onboarding.submit()
                         Keys.onEnterPressed: onboarding.submit()
@@ -295,7 +303,7 @@ LegionView {
                     Label {
                         text: qsTr("Так этот ПК будет называться в аккаунте.")
                         color: Theme.textDim
-                        font.pointSize: Theme.fontCaption
+                        font.pointSize: Theme.fontSmall + 1
                     }
                 }
 
@@ -324,7 +332,7 @@ LegionView {
                         visible: onboarding.submitting || onboarding.serverBusy
                         text: qsTr("Создаём ключ и аккаунт…")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall
+                        font.pointSize: Theme.fontSmall + 2
                     }
 
                     Item { Layout.fillWidth: true }

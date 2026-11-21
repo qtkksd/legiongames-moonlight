@@ -36,6 +36,7 @@ class LegionApi : public QObject
     Q_PROPERTY(QVariantList words READ words NOTIFY wordsChanged)
     Q_PROPERTY(QString catalogUpdatedAt READ catalogUpdatedAt NOTIFY catalogUpdatedAtChanged)
     Q_PROPERTY(QVariantMap device READ device NOTIFY deviceChanged)
+    Q_PROPERTY(QString suggestedDeviceLabel READ suggestedDeviceLabel CONSTANT)
     Q_PROPERTY(QVariantList legalDocuments READ legalDocuments NOTIFY legalDocumentsChanged)
     Q_PROPERTY(QString ageNotice READ ageNotice NOTIFY legalDocumentsChanged)
     Q_PROPERTY(QString installPath READ installPath CONSTANT)
@@ -53,6 +54,7 @@ public:
     QVariantList words() const { return m_words; }
     QString catalogUpdatedAt() const { return m_catalogUpdatedAt; }
     QVariantMap device() const { return m_device; }
+    QString suggestedDeviceLabel() const { return deviceLabel(QString()); }
     QVariantList legalDocuments() const { return m_legalDocuments; }
     QString ageNotice() const { return m_ageNotice; }
     QString installPath() const;
