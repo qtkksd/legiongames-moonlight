@@ -43,6 +43,8 @@
 #include "cli/startstream.h"
 #include "cli/pair.h"
 #include "cli/commandlineparser.h"
+#include "account/deeplink.h"
+#include "account/legionapi.h"
 #include "path.h"
 #include "utils.h"
 #include "gui/computermodel.h"
@@ -791,8 +793,42 @@ int main(int argc, char *argv[])
     }
 #endif
 
+    // legiongames:// payment return. The protocol URL is not part of the CLI
+    // grammar, so it is stripped before the command-line parser and handed to
+    // the account bridge. A secondary deep-link launch forwards the URL to the
+    // running instance and exits; normal second launches keep the historical
+    // multi-window behaviour.
+    DeepLink deepLink;
+    QStringList appArguments = app.arguments();
+    const bool deepLinkLaunch = DeepLink::isDeepLinkLaunch(appArguments);
+    const QString launchPaymentId = DeepLink::paymentIdFromArguments(appArguments);
+
+    if (deepLinkLaunch) {
+        QStringList filtered;
+        for (int i = 0; i < appArguments.size(); ++i) {
+            const QString &argument = appArguments.at(i);
+            if (argument.compare(QLatin1String("--url"), Qt::CaseInsensitive) == 0) {
+                ++i; // also drop the URL value
+                continue;
+            }
+            if (argument.startsWith(QLatin1String("--url="), Qt::CaseInsensitive) ||
+                argument.startsWith(QLatin1String("legiongames:"), Qt::CaseInsensitive)) {
+                continue;
+            }
+            filtered.append(argument);
+        }
+        appArguments = filtered;
+    }
+
+    if (!launchPaymentId.isEmpty()) {
+        if (deepLink.forwardToPrimary(DeepLink::canonicalPaymentUrl(launchPaymentId))) {
+            qInfo() << "Forwarded the payment deep link to the running instance";
+            return 0;
+        }
+    }
+
     GlobalCommandLineParser parser;
-    GlobalCommandLineParser::ParseResult commandLineParserResult = parser.parse(app.arguments());
+    GlobalCommandLineParser::ParseResult commandLineParserResult = parser.parse(appArguments);
     switch (commandLineParserResult) {
     case GlobalCommandLineParser::ListRequested:
         // Don't log to the console since it will jumble the command output
@@ -971,7 +1007,13 @@ int main(int argc, char *argv[])
         qputenv("QT_QUICK_CONTROLS_MATERIAL_PRIMARY", "#3F51B5");
     }
 
+    // Account bridge for QML. Declared before the engine so it outlives the
+    // QML objects that reference it; the context property is set as soon as
+    // the engine exists, before load().
+    LegionApi legionApi;
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty("legionApi", &legionApi);
+
     QString initialView;
     bool hasGUI = true;
 
@@ -1021,6 +1063,22 @@ int main(int argc, char *argv[])
     }
 
     if (hasGUI) {
+        legionApi.initialize();
+
+        // Listen for forwarded payment deep links. Owning this socket does not
+        // make normal launches single-instance.
+        connect(&deepLink, &DeepLink::paymentUrlReceived, &legionApi,
+                &LegionApi::notifyPaymentReturn);
+        if (!deepLink.startPrimary()) {
+            qInfo() << "Another Moonlight instance owns the deep-link socket";
+        }
+
+        if (!launchPaymentId.isEmpty()) {
+            // Cold start: the id is queued inside the API until the account is
+            // usable, and it only triggers a status poll, never a credit.
+            legionApi.notifyPaymentReturn(launchPaymentId);
+        }
+
         engine.rootContext()->setContextProperty("initialView", initialView);
         engine.rootContext()->setContextProperty("runConfigChecks", commandLineParserResult == GlobalCommandLineParser::NormalStartRequested);
 

@@ -1,17 +1,25 @@
 #include "autoupdatechecker.h"
 
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QSysInfo>
-#include <QUrl>
+#include <QCryptographicHash>
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QProcess>
-#include <QDesktopServices>
-#include <QCoreApplication>
+#include <QRandomGenerator>
+#include <QStandardPaths>
+#include <QSysInfo>
+#include <QUrl>
 #include <QtDebug>
+
+#ifndef VERSION_STR
+#define VERSION_STR "0.0.0"
+#endif
 
 // LG_COMMIT / LG_BUILD are injected by the build (see app.pro); fall back to the
 // version string / 0 for local or unsupported builds.
@@ -23,7 +31,9 @@
 #endif
 
 // The pkgs manifest is the single source of truth for the update: version,
-// monotonic build number, and per-OS asset URL + sha256.
+// monotonic build number, and per-OS asset URL + size + SHA-256. It is signed
+// with Ed25519; see account/updatemanifest.h for the exact schema and the
+// pinned-key placeholder that must be replaced before release.
 #define LG_MANIFEST_URL "https://pkgs.legiongames.ru/moonlight/latest/manifest.json"
 #define LG_FALLBACK_URL "https://pkgs.legiongames.ru/moonlight/latest/"
 
@@ -38,13 +48,24 @@ AutoUpdateChecker::AutoUpdateChecker(QObject *parent) :
     // Allow HTTP redirects
     m_Nam->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
 
-    connect(m_Nam, &QNetworkAccessManager::finished,
-            this, &AutoUpdateChecker::handleRequestFinished);
-
     m_CurrentCommit = QString::fromLatin1(LG_COMMIT);
     m_CurrentBuild = QString::fromLatin1(LG_BUILD).toInt();
+
+#ifdef LG_UPDATES_DISABLED
+    m_UpdatesDisabled = true;
+#endif
+    if (qEnvironmentVariableIsSet("LG_UPDATES_DISABLED")) {
+        m_UpdatesDisabled = true;
+    }
+
     qDebug() << "Current LegionGames Moonlight commit:" << m_CurrentCommit
-             << "build:" << m_CurrentBuild;
+             << "build:" << m_CurrentBuild
+             << "updates enabled:" << !m_UpdatesDisabled;
+}
+
+bool AutoUpdateChecker::verificationConfigured() const
+{
+    return UpdateManifestParser::verificationConfigured();
 }
 
 void AutoUpdateChecker::start()
@@ -54,12 +75,31 @@ void AutoUpdateChecker::start()
         return;
     }
 
+    if (m_UpdatesDisabled) {
+        qInfo() << "Update checks are disabled (LG_UPDATES_DISABLED)";
+        return;
+    }
+
+    if (!UpdateManifestParser::verificationConfigured()) {
+        // Fail closed. The shipped placeholder key cannot verify anything, so
+        // offering an update here would mean executing an unverified binary.
+        const QString code = QStringLiteral("update_verification_unavailable");
+        qWarning() << "Update verification key is not configured; refusing updates";
+        emit onUpdateFailed(code, UpdateManifestParser::errorMessageFor(code));
+        return;
+    }
+
     QNetworkRequest request{QUrl(QStringLiteral(LG_MANIFEST_URL))};
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
-    m_Nam->get(request);
+    request.setTransferTimeout(20000);
+
+    QNetworkReply *reply = m_Nam->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        handleManifestReply(reply);
+    });
 }
 
-bool AutoUpdateChecker::commitsEqual(const QString& a, const QString& b)
+bool AutoUpdateChecker::commitsEqual(const QString &a, const QString &b)
 {
     const QString left = a.trimmed().toLower();
     const QString right = b.trimmed().toLower();
@@ -83,13 +123,15 @@ QString AutoUpdateChecker::platformAssetKey()
 #endif
 }
 
-void AutoUpdateChecker::handleRequestFinished(QNetworkReply* reply)
+void AutoUpdateChecker::handleManifestReply(QNetworkReply *reply)
 {
     Q_ASSERT(reply->isFinished());
 
     if (reply->error() != QNetworkReply::NoError) {
         qWarning() << "Update manifest fetch failed:"
                    << reply->error() << reply->errorString();
+        const QString code = QStringLiteral("update_download_failed");
+        emit onUpdateFailed(code, UpdateManifestParser::errorMessageFor(code));
         reply->deleteLater();
         return;
     }
@@ -97,140 +139,239 @@ void AutoUpdateChecker::handleRequestFinished(QNetworkReply* reply)
     const QByteArray payload = reply->readAll();
     reply->deleteLater();
 
-    QJsonParseError error;
-    const QJsonDocument jsonDoc = QJsonDocument::fromJson(payload, &error);
-    if (jsonDoc.isNull() || !jsonDoc.isObject()) {
-        qWarning() << "Update manifest malformed:" << error.errorString();
+    UpdateManifest manifest;
+    QString errorCode;
+    if (!UpdateManifestParser::verifyAndParse(payload, &manifest, &errorCode)) {
+        qWarning() << "Update manifest rejected:" << errorCode;
+        emit onUpdateFailed(errorCode, UpdateManifestParser::errorMessageFor(errorCode));
         return;
     }
 
-    const QJsonObject manifest = jsonDoc.object();
-    const int latestBuild = manifest.value(QStringLiteral("build")).toInt(0);
-    const QString latestCommit = manifest.value(QStringLiteral("commit_full")).toString(
-        manifest.value(QStringLiteral("commit")).toString());
-    const QString latestVersion = manifest.value(QStringLiteral("version")).toString();
-
-    // Pick the asset for this platform.
-    QString assetUrl;
-    const QJsonObject assets = manifest.value(QStringLiteral("assets")).toObject();
-    const QJsonObject asset = assets.value(platformAssetKey()).toObject();
-    assetUrl = asset.value(QStringLiteral("url")).toString();
-
-    if (assetUrl.isEmpty()) {
-        qWarning() << "Update manifest missing asset for platform" << platformAssetKey();
+    if (manifest.disabled) {
+        qInfo() << "Update manifest is signed and marked disabled; no update offered";
         return;
     }
 
-    // Decide whether we're outdated: prefer the monotonic build number, fall
-    // back to commit equality (prefix match).
-    bool outdated;
-    if (latestBuild > 0 && m_CurrentBuild > 0) {
-        outdated = latestBuild > m_CurrentBuild;
-    } else {
-        outdated = !latestCommit.isEmpty() && !commitsEqual(m_CurrentCommit, latestCommit);
-    }
+    const QString latestVersion = manifest.version;
+    const QString latestCommit = manifest.commitFull;
+    const int latestBuild = manifest.build;
 
-    if (!outdated) {
-        qDebug() << "Moonlight is up to date (build" << m_CurrentBuild
-                 << ", latest" << latestBuild << ")";
+    if (latestBuild < m_CurrentBuild) {
+        // Signed, but older than this build. Never downgrade.
+        qInfo() << "Ignoring older signed manifest: build" << latestBuild
+                << "current" << m_CurrentBuild;
         return;
     }
 
-    qDebug() << "Update available: version" << latestVersion
-             << "build" << latestBuild << assetUrl;
-    emit onUpdateAvailable(latestVersion.isEmpty() ? latestCommit : latestVersion, assetUrl);
+    if (latestBuild == m_CurrentBuild && commitsEqual(m_CurrentCommit, latestCommit)) {
+        qDebug() << "Moonlight is up to date (build" << m_CurrentBuild << ")";
+        return;
+    }
+
+    if (m_CurrentBuild > 0 && m_CurrentBuild < manifest.minSupportedBuild) {
+        qWarning() << "This build" << m_CurrentBuild
+                   << "is below the supported floor" << manifest.minSupportedBuild
+                   << "- a forced update is required";
+    }
+
+    const QMap<QString, UpdateAsset> &assets = manifest.assets;
+    const QString key = platformAssetKey();
+    if (!assets.contains(key)) {
+        qInfo() << "Signed manifest has no asset for platform" << key;
+        return;
+    }
+
+    m_PendingAsset = assets.value(key);
+    m_HasPendingAsset = true;
+
+    qDebug() << "Update available: version" << latestVersion << "build" << latestBuild
+             << m_PendingAsset.url;
+    emit onUpdateAvailable(latestVersion.isEmpty() ? latestCommit : latestVersion,
+                           m_PendingAsset.url);
 }
 
-// Anything smaller than this is almost certainly an error page, not a build.
-#define MIN_UPDATE_SIZE (1024 * 1024)
-
-void AutoUpdateChecker::installUpdate(const QString& url)
+QString AutoUpdateChecker::randomTempPath()
 {
-#if !defined(Q_OS_WIN32) && !defined(APP_IMAGE)
-    QDesktopServices::openUrl(QUrl(url));
-#else
-#if defined(Q_OS_WIN32)
-    const QString targetPath = QDir(QDir::tempPath()).filePath(QStringLiteral("MoonlightSetup.exe"));
-#else
-    // Self-update the running AppImage in place. The AppImage runtime exports
-    // the absolute path of the current bundle in $APPIMAGE.
-    const QString appImagePath = qEnvironmentVariable("APPIMAGE");
-    if (appImagePath.isEmpty() || !QFile::exists(appImagePath)) {
-        qWarning() << "APPIMAGE env var not set; falling back to browser download";
-        QDesktopServices::openUrl(QUrl(url));
-        return;
+    QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (tempDir.isEmpty()) {
+        tempDir = QDir::tempPath();
     }
-    const QString targetPath = appImagePath + QStringLiteral(".new");
+
+    const QString suffix =
+#if defined(Q_OS_WIN32)
+        QStringLiteral(".exe");
+#else
+        QStringLiteral(".AppImage");
 #endif
 
-    qInfo() << "Downloading update to" << targetPath << "from" << url;
+    const QString name =
+        QStringLiteral("lgupdate-%1-%2%3")
+            .arg(QDateTime::currentMSecsSinceEpoch())
+            .arg(QRandomGenerator::global()->generate64(), 16, 16, QLatin1Char('0'))
+            .arg(suffix);
 
-    QNetworkRequest request{QUrl(url)};
+    return QDir(tempDir).filePath(name);
+}
+
+void AutoUpdateChecker::rejectUpdate(const QString &code, const QString &message)
+{
+    qWarning() << "Update rejected:" << code << message;
+    emit onUpdateFailed(code, message.isEmpty() ? UpdateManifestParser::errorMessageFor(code)
+                                                : message);
+}
+
+void AutoUpdateChecker::installUpdate(const QString &url)
+{
+    if (m_UpdatesDisabled) {
+        return;
+    }
+
+    if (!m_HasPendingAsset || m_PendingAsset.url != url) {
+        // Only a URL that came out of a verified manifest can ever be executed.
+        rejectUpdate(QStringLiteral("update_unverified"),
+                     QStringLiteral("Обновление не проверено и не будет установлено."));
+        return;
+    }
+
+    // Find the asset entry again so a stale signal cannot cross-wire manifests.
+    const UpdateAsset asset = m_PendingAsset;
+
+#if !defined(Q_OS_WIN32) && !defined(APP_IMAGE)
+    // Nothing executable is downloaded here: the browser handles the file and
+    // the platform's own package flow. No verification gap on this path.
+    QDesktopServices::openUrl(QUrl(asset.url));
+#else
+    downloadVerifiedAsset(asset);
+#endif
+}
+
+void AutoUpdateChecker::downloadVerifiedAsset(const UpdateAsset &asset)
+{
+    const QString targetPath = randomTempPath();
+    if (targetPath.isEmpty()) {
+        rejectUpdate(QStringLiteral("update_download_failed"),
+                     QStringLiteral("Не удалось выбрать папку для загрузки."));
+        return;
+    }
+
+    qInfo() << "Downloading verified update to" << targetPath << "from" << asset.url;
+
+    QNetworkRequest request{QUrl(asset.url)};
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
+    request.setTransferTimeout(600000);
 
-    QFile* file = new QFile(targetPath);
+    QFile *file = new QFile(targetPath);
     if (!file->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         qWarning() << "Failed to open update path for writing:" << targetPath;
         delete file;
-        QDesktopServices::openUrl(QUrl(url));
+        rejectUpdate(QStringLiteral("update_download_failed"),
+                     QStringLiteral("Не удалось сохранить файл обновления."));
         return;
     }
 
-    QNetworkReply* reply = m_Nam->get(request);
+    // Owner-only permissions on Unix; on Windows the per-user temp directory
+    // already restricts access and the ACL is tightened by the installer flow.
+    QFile::setPermissions(targetPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+
+    QNetworkReply *reply = m_Nam->get(request);
 
     // Stream chunks to disk so the UI never blocks on a large download.
     connect(reply, &QNetworkReply::readyRead, file, [reply, file]() {
         file->write(reply->readAll());
     });
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, file, url, targetPath]() {
-        file->close();
-        const qint64 size = file->size();
-        file->deleteLater();
-        reply->deleteLater();
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, file, targetPath, asset]() {
+                file->close();
+                const qint64 size = file->size();
+                file->deleteLater();
+                reply->deleteLater();
 
-        if (reply->error() != QNetworkReply::NoError || size < MIN_UPDATE_SIZE) {
-            qWarning() << "Update download failed or too small:"
-                       << reply->errorString() << "size=" << size;
-            QFile::remove(targetPath);
-            QDesktopServices::openUrl(QUrl(url));
-            return;
-        }
+                if (reply->error() != QNetworkReply::NoError) {
+                    qWarning() << "Update download failed:" << reply->errorString();
+                    QFile::remove(targetPath);
+                    rejectUpdate(QStringLiteral("update_download_failed"),
+                                 QStringLiteral("Не удалось скачать обновление."));
+                    return;
+                }
+
+                if (size != asset.size) {
+                    qWarning() << "Update size mismatch: got" << size << "expected"
+                               << asset.size;
+                    QFile::remove(targetPath);
+                    rejectUpdate(QStringLiteral("update_size_mismatch"),
+                                 UpdateManifestParser::errorMessageFor(
+                                     QStringLiteral("update_size_mismatch")));
+                    return;
+                }
+
+                QFile downloaded(targetPath);
+                if (!downloaded.open(QIODevice::ReadOnly)) {
+                    QFile::remove(targetPath);
+                    rejectUpdate(QStringLiteral("update_download_failed"),
+                                 QStringLiteral("Не удалось проверить файл обновления."));
+                    return;
+                }
+
+                QCryptographicHash hash(QCryptographicHash::Sha256);
+                const bool hashed = hash.addData(&downloaded);
+                downloaded.close();
+
+                if (!hashed ||
+                    QString::fromLatin1(hash.result().toHex()).compare(asset.sha256,
+                                                                       Qt::CaseInsensitive) != 0) {
+                    qWarning() << "Update SHA-256 mismatch for" << targetPath;
+                    QFile::remove(targetPath);
+                    rejectUpdate(QStringLiteral("update_hash_mismatch"),
+                                 UpdateManifestParser::errorMessageFor(
+                                     QStringLiteral("update_hash_mismatch")));
+                    return;
+                }
 
 #if defined(Q_OS_WIN32)
-        // Run the WiX Burn bundle interactively (NOT /quiet) so the user sees
-        // the standard installer UI (progress + finish page) instead of a silent
-        // update. The bundle's LaunchTarget adds a default-checked "Launch
-        // Moonlight" action on the finish page, so the app reopens once the
-        // install completes. /norestart suppresses any reboot prompt. Quit now
-        // so the installer can replace the running binary.
-        qInfo() << "Launching installer (interactive):" << targetPath;
-        QProcess::startDetached(targetPath, QStringList() << QStringLiteral("/norestart"));
-        QCoreApplication::quit();
+                // Run the WiX Burn bundle interactively (NOT /quiet) so the user
+                // sees the standard installer UI. The bundle's LaunchTarget adds
+                // a default-checked "Launch Moonlight" action. /norestart
+                // suppresses any reboot prompt. Quit now so the installer can
+                // replace the running binary.
+                qInfo() << "Launching verified installer:" << targetPath;
+                QProcess::startDetached(targetPath,
+                                        QStringList() << QStringLiteral("/norestart"));
+                QCoreApplication::quit();
 #else
-        // AppImage: make the new bundle executable, replace the running one,
-        // then relaunch it.
-        QFile::setPermissions(targetPath,
-                              QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner |
-                              QFile::ReadGroup | QFile::ExeGroup |
-                              QFile::ReadOther | QFile::ExeOther);
+                // AppImage: the manifest and the artifact are both verified, so
+                // replacing the running bundle is safe.
+                QFile::setPermissions(targetPath,
+                                      QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                          QFileDevice::ExeOwner | QFileDevice::ReadGroup |
+                                          QFileDevice::ExeGroup | QFileDevice::ReadOther |
+                                          QFileDevice::ExeOther);
 
-        const QString appImagePath = qEnvironmentVariable("APPIMAGE");
-        if (QFile::exists(appImagePath)) {
-            QFile::remove(appImagePath);
-        }
-        if (!QFile::rename(targetPath, appImagePath)) {
-            qWarning() << "Failed to replace AppImage:" << appImagePath;
-            QDesktopServices::openUrl(QUrl(url));
-            return;
-        }
+                const QString appImagePath = qEnvironmentVariable("APPIMAGE");
+                if (appImagePath.isEmpty() || !QFile::exists(appImagePath)) {
+                    qWarning() << "APPIMAGE env var not set; keeping the download at"
+                               << targetPath;
+                    QDesktopServices::openUrl(QUrl(QStringLiteral(LG_FALLBACK_URL)));
+                    return;
+                }
 
-        qInfo() << "Relaunching updated AppImage:" << appImagePath;
-        QProcess::startDetached(appImagePath, QStringList());
-        QCoreApplication::quit();
+                if (!QFile::rename(targetPath, appImagePath)) {
+                    // rename() is atomic on the same filesystem; if the temp dir
+                    // is elsewhere, fall back to remove+rename and accept the
+                    // small window.
+                    QFile::remove(appImagePath);
+                    if (!QFile::rename(targetPath, appImagePath)) {
+                        qWarning() << "Failed to replace AppImage:" << appImagePath;
+                        QDesktopServices::openUrl(QUrl(QStringLiteral(LG_FALLBACK_URL)));
+                        return;
+                    }
+                }
+
+                qInfo() << "Relaunching updated AppImage:" << appImagePath;
+                QProcess::startDetached(appImagePath, QStringList());
+                QCoreApplication::quit();
 #endif
-    });
-#endif
+            });
 }

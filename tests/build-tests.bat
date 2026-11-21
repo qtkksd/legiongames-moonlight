@@ -3,7 +3,9 @@ rem Build and run moonlight-mic QtTests
 setlocal enabledelayedexpansion
 
 set QT_PATH=C:\Qt\6.10.3\msvc2022_64\bin
-set PATH=%QT_PATH%;%PATH%
+rem The tests link OpenSSL, SDL2 and opus from the repo prebuilts; add the DLL
+rem directory so the test executable can start.
+set PATH=%QT_PATH%;%~dp0..\libs\windows\lib\x64;%PATH%
 
 call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
 if errorlevel 1 (

@@ -8,6 +8,7 @@
 extern int runTogglePersistenceTests(int argc, char** argv);
 extern int runGateLogicTests(int argc, char** argv);
 extern int runMicLifecycleTests(int argc, char** argv);
+extern int runAccountCoreTests(int argc, char** argv);
 
 // Build an argv array from a QStringList, valid for the call duration.
 static void makeArgv(const QStringList& args,
@@ -62,6 +63,18 @@ int main(int argc, char* argv[])
         makeArgv(args, storage, ptrs);
         int c = ptrs.size();
         status |= runMicLifecycleTests(c, ptrs.data());
+    }
+
+    // Test D — account core (vault, key, proof, consent, deep link, manifest)
+    {
+        QStringList args = {argv[0],
+            "-o", "test-results-account.txt,txt",
+            "-v2"};
+        QVector<QByteArray> storage;
+        QVector<char*> ptrs;
+        makeArgv(args, storage, ptrs);
+        int c = ptrs.size();
+        status |= runAccountCoreTests(c, ptrs.data());
     }
 
     return status;

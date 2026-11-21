@@ -1,6 +1,8 @@
 #include "identitymanager.h"
 #include "utils.h"
 
+#include "account/vault.h"
+
 #include <QDebug>
 
 #include <openssl/pem.h>
@@ -8,9 +10,15 @@
 #include <openssl/x509.h>
 #include <openssl/rand.h>
 
+// QSettings keys. SER_CERT/SER_KEY are legacy plaintext slots: they are read
+// once for migration and then deleted. New key material lives only in the OS
+// vault under the names below.
 #define SER_UNIQUEID "uniqueid"
 #define SER_CERT "certificate"
 #define SER_KEY "key"
+
+#define VAULT_CERT "stream.identity.cert"
+#define VAULT_KEY "stream.identity.key"
 
 IdentityManager* IdentityManager::s_Im = nullptr;
 
@@ -26,7 +34,9 @@ IdentityManager::get()
     return s_Im;
 }
 
-void IdentityManager::createCredentials(QSettings& settings)
+IdentityManager::~IdentityManager() = default;
+
+void IdentityManager::createCredentials()
 {
     X509* cert = X509_new();
     THROW_BAD_ALLOC_IF_NULL(cert);
@@ -100,30 +110,80 @@ void IdentityManager::createCredentials(QSettings& settings)
         qFatal("Newly generated private key is unreadable");
     }
 
-    settings.setValue(SER_CERT, m_CachedPemCert);
-    settings.setValue(SER_KEY, m_CachedPrivateKey);
+    if (m_Vault->isAvailable()) {
+        if (m_Vault->save(QStringLiteral(VAULT_CERT), m_CachedPemCert) &&
+            m_Vault->save(QStringLiteral(VAULT_KEY), m_CachedPrivateKey)) {
+            qInfo() << "Wrote a new GameStream identity to the OS vault";
+        }
+        else {
+            qWarning() << "Failed to store the GameStream identity in the OS vault:"
+                       << m_Vault->lastErrorCode();
+        }
+    }
+    else {
+        // No plaintext fallback. The identity lives for this process only and
+        // the user will have to re-pair the host after a restart.
+        qWarning() << "Vault unavailable: the GameStream identity will not persist";
+    }
+}
 
-    qInfo() << "Wrote new identity credentials to settings";
+void IdentityManager::loadCredentials()
+{
+    bool haveCert = false;
+    bool haveKey = false;
+
+    if (m_Vault->isAvailable()) {
+        const QString certKey = QStringLiteral(VAULT_CERT);
+        const QString keyKey = QStringLiteral(VAULT_KEY);
+        const QByteArray cert = m_Vault->load(certKey, &haveCert);
+        const QByteArray key = m_Vault->load(keyKey, &haveKey);
+        if (haveCert && haveKey) {
+            m_CachedPemCert = cert;
+            m_CachedPrivateKey = key;
+            return;
+        }
+    }
+
+    QSettings settings;
+    const QByteArray legacyCert = settings.value(SER_CERT).toByteArray();
+    const QByteArray legacyKey = settings.value(SER_KEY).toByteArray();
+    if (legacyCert.isEmpty() || legacyKey.isEmpty()) {
+        return;
+    }
+
+    m_CachedPemCert = legacyCert;
+    m_CachedPrivateKey = legacyKey;
+
+    if (m_Vault->isAvailable()) {
+        if (m_Vault->save(QStringLiteral(VAULT_CERT), legacyCert) &&
+            m_Vault->save(QStringLiteral(VAULT_KEY), legacyKey)) {
+            qInfo() << "Migrated the GameStream identity out of plaintext settings";
+        }
+        else {
+            qWarning() << "Vault write failed while migrating the GameStream identity:"
+                       << m_Vault->lastErrorCode();
+        }
+    }
+    else {
+        qWarning() << "Vault unavailable: keeping the migrated identity in memory only";
+    }
+
+    // Always remove the plaintext copy, even when the vault write failed. A
+    // re-pair is cheaper than leaving a private key on disk.
+    settings.remove(SER_CERT);
+    settings.remove(SER_KEY);
+    settings.sync();
 }
 
 IdentityManager::IdentityManager()
 {
-    QSettings settings;
+    m_Vault.reset(new Vault());
+    loadCredentials();
 
-    m_CachedPemCert = settings.value(SER_CERT).toByteArray();
-    m_CachedPrivateKey = settings.value(SER_KEY).toByteArray();
-
-    if (m_CachedPemCert.isEmpty() || m_CachedPrivateKey.isEmpty()) {
-        qInfo() << "No existing credentials found";
-        createCredentials(settings);
-    }
-    else if (getSslCertificate().isNull()) {
-        qWarning() << "Certificate is unreadable";
-        createCredentials(settings);
-    }
-    else if (getSslKey().isNull()) {
-        qWarning() << "Private key is unreadable";
-        createCredentials(settings);
+    if (m_CachedPemCert.isEmpty() || m_CachedPrivateKey.isEmpty() ||
+        getSslCertificate().isNull() || getSslKey().isNull()) {
+        qInfo() << "No usable credentials found";
+        createCredentials();
     }
 
     // We should have valid credentials now. If not, we're screwed
