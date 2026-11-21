@@ -35,5 +35,14 @@
         <file>gui/legion/OnboardingView.qml</file>
         <file>gui/legion/RecoveryWordsView.qml</file>
         <file>gui/legion/RecoveryView.qml</file>
+        <file>gui/legion/HomeView.qml</file>
+        <file>gui/legion/ClubsView.qml</file>
+        <file>gui/legion/ClubDetailView.qml</file>
+        <file>gui/legion/SessionView.qml</file>
+        <file>gui/legion/QueueView.qml</file>
+        <file>gui/legion/WalletView.qml</file>
+        <file>gui/legion/PaymentView.qml</file>
+        <file>gui/legion/AccountView.qml</file>
+        <file>gui/legion/LegionSettingsView.qml</file>
     </qresource>
 </RCC>
