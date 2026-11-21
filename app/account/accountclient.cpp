@@ -411,7 +411,10 @@ void AccountClient::startRequest(const Pending &pending)
                              clientVersion().toUtf8());
     request.setRawHeader("X-Client-Version", clientVersion().toUtf8());
     request.setRawHeader("X-Request-Id", pending.requestId.toUtf8());
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+    // SteamLink ships Qt 5.14, where QNetworkRequest has no transfer timeout.
     request.setTransferTimeout(20000);
+#endif
 
     if (pending.authenticated) {
         const QByteArray token = (pending.tokenKind == TokenKind::Refresh)
