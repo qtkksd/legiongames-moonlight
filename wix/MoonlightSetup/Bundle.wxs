@@ -20,6 +20,15 @@
           DisableModify="yes"
           IconSourceFile="..\..\app\moonlight.ico">
 
+    <!-- The legiongames:// protocol is registered by the MSI (Product.wxs,
+         component MoonlightUrlProtocol) under HKCU and points directly at
+         Moonlight.exe with the url argument. It is deliberately NOT registered
+         to this bundle: a protocol handler that starts the Burn bootstrapper
+         would re-run the installer and request elevation every time the user
+         returns from the payment page. Nothing in the bundle needs to change
+         for the deep link; the app parses its url argument and forwards a
+         second-instance launch to the running window. -->
+
     <bal:Condition Message="This version of Moonlight requires Windows 10 or later." Condition="VersionNT &gt;= v10.0" />
     <bal:Condition Message="This version of Moonlight requires a 64-bit version of Windows." Condition="NativeMachine &lt;&gt; 332" />
 

@@ -70,6 +70,22 @@
                      KeyPath="yes" />
     </Component>
 
+    <!-- legiongames:// handler for the payment return deep link.
+         Registered under HKCU so it never needs elevation, and pointed at the
+         installed app (not the Burn bundle) so opening a payment link never
+         triggers UAC. The app receives the URL as its url argument. -->
+    <Component Id="MoonlightUrlProtocol" Directory="INSTALLFOLDER">
+      <RegistryKey Root="HKCU" Key="Software\Classes\legiongames">
+        <RegistryValue Type="string" Value="URL:LegionGames payment link" KeyPath="yes" />
+        <RegistryValue Name="URL Protocol" Type="string" Value="" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\legiongames\DefaultIcon">
+        <RegistryValue Type="string" Value="[#MoonlightExe],0" />
+      </RegistryKey>
+      <RegistryKey Root="HKCU" Key="Software\Classes\legiongames\shell\open\command">
+        <RegistryValue Type="string" Value="&quot;[#MoonlightExe]&quot; --url &quot;%1&quot;" />
+      </RegistryKey>
+    </Component>
     <!-- Persist desktop shortcut's installed state to let Bundle.wxs know if
          the desktop shortcut should installed by default when upgrading the
          product -->
@@ -105,6 +121,7 @@
       <ComponentRef Id="MoonlightShortcuts" />
       <ComponentRef Id="MoonlightDesktopShortcutState" />
       <ComponentRef Id="MoonlightDesktopShortcut" />
+      <ComponentRef Id="MoonlightUrlProtocol" />
       <ComponentGroupRef Id="MoonlightDependencies" />
     </Feature>
 
