@@ -61,7 +61,9 @@ QString DeepLink::paymentIdFromUrl(const QString &url)
         while (path.startsWith(QLatin1Char('/'))) {
             path.remove(0, 1);
         }
-        if (path.startsWith(QLatin1String(kPaymentHost) + QLatin1Char('/'))) {
+        QString paymentPrefix = QString::fromLatin1(kPaymentHost);
+        paymentPrefix += QLatin1Char('/');
+        if (path.startsWith(paymentPrefix)) {
             candidate = path.mid(kPaymentHostLength + 1);
         }
     }
@@ -74,8 +76,12 @@ QString DeepLink::canonicalPaymentUrl(const QString &paymentId)
     if (!isPaymentUuid(paymentId)) {
         return QString();
     }
-    return QStringLiteral("legiongames://") + QLatin1String(kPaymentHost) + QLatin1Char('/') +
-           paymentId.toLower();
+
+    QString url = QStringLiteral("legiongames://");
+    url += QLatin1String(kPaymentHost);
+    url += QLatin1Char('/');
+    url += paymentId.toLower();
+    return url;
 }
 
 bool DeepLink::isDeepLinkLaunch(const QStringList &arguments)

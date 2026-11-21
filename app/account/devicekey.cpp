@@ -221,8 +221,8 @@ bool publicPoint(evp_pkey_st *key, QByteArray *x, QByteArray *y)
     const unsigned char *point = der + length - 65;
     const bool valid = point[0] == 0x04;
     if (valid) {
-        x->assign(reinterpret_cast<const char *>(point + 1), 32);
-        y->assign(reinterpret_cast<const char *>(point + 33), 32);
+        *x = QByteArray(reinterpret_cast<const char *>(point + 1), 32);
+        *y = QByteArray(reinterpret_cast<const char *>(point + 33), 32);
     }
 
     OPENSSL_free(der);
@@ -232,9 +232,13 @@ bool publicPoint(evp_pkey_st *key, QByteArray *x, QByteArray *y)
 evp_pkey_st *generateP256()
 {
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-    evp_pkey_st *key = EVP_PKEY_Q_keygen(nullptr, nullptr, "EC", "P-256");
-    if (key != nullptr) {
-        return key;
+    // Scoped so the OpenSSL 3 fast path does not collide with the fallback
+    // keygen variable below when both blocks are compiled.
+    {
+        evp_pkey_st *generated = EVP_PKEY_Q_keygen(nullptr, nullptr, "EC", "P-256");
+        if (generated != nullptr) {
+            return generated;
+        }
     }
 #endif
 
@@ -243,13 +247,13 @@ evp_pkey_st *generateP256()
         return nullptr;
     }
 
-    EVP_PKEY *key = nullptr;
+    EVP_PKEY *generated = nullptr;
     const bool ok = EVP_PKEY_keygen_init(ctx) > 0 &&
                     EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx, NID_X9_62_prime256v1) > 0 &&
-                    EVP_PKEY_keygen(ctx, &key) > 0;
+                    EVP_PKEY_keygen(ctx, &generated) > 0;
 
     EVP_PKEY_CTX_free(ctx);
-    return ok ? key : nullptr;
+    return ok ? generated : nullptr;
 }
 
 } // namespace

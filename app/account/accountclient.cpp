@@ -114,8 +114,10 @@ QString AccountClient::apiBaseUrl()
 
 QString AccountClient::clientVersion()
 {
-    return QString::fromLatin1(VERSION_STR) + QLatin1Char('+') +
-           QString::fromLatin1(LG_BUILD);
+    QString version = QString::fromLatin1(VERSION_STR);
+    version += QLatin1Char('+');
+    version += QString::fromLatin1(LG_BUILD);
+    return version;
 }
 
 QByteArray AccountClient::proofPayload(const QByteArray &body, const QString &method,
