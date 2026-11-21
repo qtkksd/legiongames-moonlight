@@ -1067,8 +1067,8 @@ int main(int argc, char *argv[])
 
         // Listen for forwarded payment deep links. Owning this socket does not
         // make normal launches single-instance.
-        connect(&deepLink, &DeepLink::paymentUrlReceived, &legionApi,
-                &LegionApi::notifyPaymentReturn);
+        QObject::connect(&deepLink, &DeepLink::paymentUrlReceived, &legionApi,
+                         &LegionApi::notifyPaymentReturn);
         if (!deepLink.startPrimary()) {
             qInfo() << "Another Moonlight instance owns the deep-link socket";
         }
