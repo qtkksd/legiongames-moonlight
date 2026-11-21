@@ -1636,7 +1636,8 @@ void LegionApi::getClub(const QString &slug)
                       }
 
                       QVariantMap data;
-                      data.insert(QStringLiteral("club"), result.json.toVariant());
+                      data.insert(QStringLiteral("club"),
+                                  QVariant::fromValue(result.json.toVariantMap()));
                       emit response(QStringLiteral("club"), data);
                   });
 }
@@ -2201,7 +2202,8 @@ QVariantMap LegionApi::sessionData(const QJsonObject &json)
                     json.value(QStringLiteral("session")).toVariant());
     }
     else if (!json.isEmpty()) {
-        data.insert(QStringLiteral("session"), json.toVariant());
+        data.insert(QStringLiteral("session"),
+                    QVariant::fromValue(json.toVariantMap()));
     }
     else {
         data.insert(QStringLiteral("session"), QVariant());
@@ -2217,7 +2219,8 @@ QVariantMap LegionApi::entryData(const QJsonObject &json)
                     json.value(QStringLiteral("entry")).toVariant());
     }
     else if (!json.isEmpty()) {
-        data.insert(QStringLiteral("entry"), json.toVariant());
+        data.insert(QStringLiteral("entry"),
+                    QVariant::fromValue(json.toVariantMap()));
     }
     else {
         data.insert(QStringLiteral("entry"), QVariant());
