@@ -31,5 +31,9 @@
         <file>gui/legion/BalancePanel.qml</file>
         <file>gui/legion/ClubCard.qml</file>
         <file>gui/legion/LegionNavRail.qml</file>
+        <file>gui/legion/StartupGateView.qml</file>
+        <file>gui/legion/OnboardingView.qml</file>
+        <file>gui/legion/RecoveryWordsView.qml</file>
+        <file>gui/legion/RecoveryView.qml</file>
     </qresource>
 </RCC>
