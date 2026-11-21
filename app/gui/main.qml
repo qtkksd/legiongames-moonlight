@@ -136,7 +136,10 @@ ApplicationWindow {
     }
 
     function startView() {
-        if (legionApiAvailable() && initialView.indexOf("legion/") === -1) {
+        // Only the normal start goes through the product shell. Command-line
+        // modes (--stream/--quit/--pair) own their initial page and must not
+        // be replaced even when the account backend is loaded.
+        if (initialView === "qrc:/gui/PcView.qml" && legionApiAvailable()) {
             return "qrc:/gui/legion/LegionShell.qml"
         }
         return initialView
