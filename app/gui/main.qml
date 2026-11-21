@@ -13,6 +13,10 @@ import SdlGamepadKeyNavigation 1.0
 ApplicationWindow {
     property bool pollingActive: false
 
+    // True once the whole window tree exists; used to avoid touching the
+    // toolbar from the StackView's early completion callback.
+    property bool uiReady: false
+
     // Set by SettingsView to force the back operation to pop all
     // pages except the initial view. This is required when doing
     // a retranslate() because AppView breaks for some reason.
@@ -20,7 +24,9 @@ ApplicationWindow {
 
     id: window
     width: 1280
-    height: 600
+    height: 720
+    minimumWidth: 1024
+    minimumHeight: 600
 
     // LegionGames theme (mirrors templates/home.html palette)
     Material.theme: Material.Dark
@@ -67,6 +73,11 @@ ApplicationWindow {
             SystemProperties.unmappedGamepadsChanged.connect(hasUnmappedGamepadsChanged)
             SystemProperties.startAsyncLoad()
         }
+
+        // The initial StackView push happens before the header exists, so the
+        // chrome state is applied once here.
+        uiReady = true
+        toolBar.visible = !legionShellShown()
     }
 
     function hasHardwareAccelerationChanged() {
@@ -112,6 +123,34 @@ ApplicationWindow {
         }
     }
 
+    // The account backend exposes `legionApi` as a context property. Without
+    // it the classic PC grid stays the entry point, so a partially built
+    // backend never leaves the user on a blank screen.
+    function legionApiAvailable() {
+        try {
+            return typeof legionApi !== "undefined" && legionApi !== null
+        }
+        catch (error) {
+            return false
+        }
+    }
+
+    function startView() {
+        // Only the normal start goes through the product shell. Command-line
+        // modes (--stream/--quit/--pair) own their initial page and must not
+        // be replaced even when the account backend is loaded.
+        if (initialView === "qrc:/gui/PcView.qml" && legionApiAvailable()) {
+            return "qrc:/gui/legion/LegionShell.qml"
+        }
+        return initialView
+    }
+
+    // The product shell draws its own header and rail.
+    function legionShellShown() {
+        return stackView.currentItem !== null &&
+               stackView.currentItem.objectName === "legion-shell"
+    }
+
     StackView {
         id: stackView
         anchors.fill: parent
@@ -121,13 +160,20 @@ ApplicationWindow {
             // Perform our early initialization before constructing
             // the initial view and pushing it to the StackView
             doEarlyInit()
-            push(initialView)
+            push(startView())
         }
 
         onCurrentItemChanged: {
             // Ensure focus travels to the next view when going back
             if (currentItem) {
                 currentItem.forceActiveFocus()
+            }
+
+            // Hide the window toolbar while the product shell is on screen:
+            // it provides its own rail and header. StreamSegue toggles the
+            // same toolbar directly, so this is reassigned on every change.
+            if (uiReady) {
+                toolBar.visible = !legionShellShown()
             }
         }
 

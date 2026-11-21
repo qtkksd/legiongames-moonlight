@@ -19,5 +19,31 @@
         <file>gui/NavigableDialog.qml</file>
         <file>gui/CenteredGridView.qml</file>
         <file>gui/CliPair.qml</file>
+        <file>gui/legion/Api.js</file>
+        <file>gui/legion/Theme.js</file>
+        <file>gui/legion/LegionView.qml</file>
+        <file>gui/legion/NeonFrame.qml</file>
+        <file>gui/legion/LegionButton.qml</file>
+        <file>gui/legion/StatusPill.qml</file>
+        <file>gui/legion/ErrorBanner.qml</file>
+        <file>gui/legion/EmptyState.qml</file>
+        <file>gui/legion/PageHeader.qml</file>
+        <file>gui/legion/BalancePanel.qml</file>
+        <file>gui/legion/ClubCard.qml</file>
+        <file>gui/legion/LegionNavRail.qml</file>
+        <file>gui/legion/LegionShell.qml</file>
+        <file>gui/legion/StartupGateView.qml</file>
+        <file>gui/legion/OnboardingView.qml</file>
+        <file>gui/legion/RecoveryWordsView.qml</file>
+        <file>gui/legion/RecoveryView.qml</file>
+        <file>gui/legion/HomeView.qml</file>
+        <file>gui/legion/ClubsView.qml</file>
+        <file>gui/legion/ClubDetailView.qml</file>
+        <file>gui/legion/SessionView.qml</file>
+        <file>gui/legion/QueueView.qml</file>
+        <file>gui/legion/WalletView.qml</file>
+        <file>gui/legion/PaymentView.qml</file>
+        <file>gui/legion/AccountView.qml</file>
+        <file>gui/legion/LegionSettingsView.qml</file>
     </qresource>
 </RCC>

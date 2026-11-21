@@ -1,0 +1,404 @@
+import QtQuick 2.9
+import QtQuick.Controls 2.2
+import QtQuick.Layouts 1.3
+
+import "Api.js" as Api
+import "Theme.js" as Theme
+
+// Club detail: the decision point before a session, a queue slot or a top-up.
+LegionView {
+    id: detail
+
+    property var club: null
+    property bool starting: false
+    property bool joining: false
+
+    readonly property int clubId: {
+        if (club && club.id !== undefined) {
+            return club.id
+        }
+        if (params && params.clubId !== undefined) {
+            return params.clubId
+        }
+        return -1
+    }
+
+    readonly property string clubName: {
+        if (club && club.name) {
+            return club.name
+        }
+        if (params && params.name) {
+            return params.name
+        }
+        return qsTr("Клуб")
+    }
+
+    readonly property string updatedAt: {
+        if (club && club.updated_at) {
+            return club.updated_at
+        }
+        if (shell && shell.catalogAt) {
+            return shell.catalogAt
+        }
+        return catalogUpdatedAt
+    }
+
+    readonly property bool stale: Theme.isStale(updatedAt)
+    readonly property bool open: Api.isClubOpen(club)
+    readonly property int freeUnits: club ? Number(club.free_units || 0) : 0
+    readonly property var balance: shell ? shell.balanceFor(clubId) : 0
+    readonly property bool hasFunds: Number(balance) > 0
+    readonly property bool canPlay: open && freeUnits > 0 && !stale && hasFunds &&
+                                    !starting && !serverBusy
+    readonly property bool canQueue: open && !stale && hasFunds && !joining && !serverBusy
+    readonly property string blockedReason: club ? Api.traceReason(club, stale, balance) : ""
+
+    function activate() {
+        starting = false
+        joining = false
+        if (shell && params && params.clubId !== undefined) {
+            var cached = shell.clubById(params.clubId)
+            if (cached) {
+                club = cached
+            }
+        }
+        if (params && params.slug) {
+            Api.getClub(api, params.slug)
+        }
+        if (shell) {
+            shell.refreshWallet()
+            if (shell.catalog.length === 0) {
+                shell.loadCatalog(false)
+            }
+        }
+    }
+
+    function focusFirst() {
+        playButton.forceActiveFocus()
+    }
+
+    function startSession() {
+        if (!canPlay) {
+            return
+        }
+        clearError()
+        starting = true
+        if (!Api.startSession(api, clubId)) {
+            starting = false
+            showError("offline", "")
+        }
+    }
+
+    function joinQueue() {
+        if (!canQueue) {
+            return
+        }
+        clearError()
+        joining = true
+        if (!Api.joinQueue(api, clubId)) {
+            joining = false
+            showError("offline", "")
+        }
+    }
+
+    Connections {
+        target: detail.api
+        ignoreUnknownSignals: true
+
+        function onResponse(op, data) {
+            if (op === "club") {
+                detail.club = Api.clubOf(data)
+            }
+            else if (op === "session_start") {
+                detail.starting = false
+                detail.go("qrc:/gui/legion/SessionView.qml", {})
+            }
+            else if (op === "queue_join") {
+                detail.joining = false
+                detail.go("qrc:/gui/legion/QueueView.qml", {})
+            }
+        }
+
+        function onFailed(op, code, message) {
+            if (op === "club" || op === "session_start" || op === "queue_join") {
+                detail.starting = false
+                detail.joining = false
+                detail.showError(code, message, op)
+            }
+        }
+    }
+
+    PageHeader {
+        id: header
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: Theme.spaceXl
+        showBack: true
+        backText: qsTr("Клубы")
+        title: detail.clubName
+        subtitle: detail.club && detail.club.address ? detail.club.address : ""
+        onBack: detail.goBack()
+    }
+
+    ScrollView {
+        anchors.top: header.bottom
+        anchors.topMargin: Theme.spaceL
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: Theme.spaceXl
+        anchors.rightMargin: Theme.spaceXl
+        anchors.bottomMargin: Theme.spaceL
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+        Column {
+            width: parent.width
+            spacing: Theme.spaceL
+
+            NeonFrame {
+                width: parent.width
+                height: 200
+                highlighted: true
+                flicker: true
+
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    radius: Theme.radiusM - 1
+                    color: Theme.panelAlt
+
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        source: detail.club && detail.club.image_url ? detail.club.image_url : ""
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        visible: source.toString().length > 0
+                    }
+
+                    Image {
+                        anchors.centerIn: parent
+                        width: Math.min(parent.width, parent.height) * 0.6
+                        height: width
+                        source: "qrc:/res/logo_alien.svg"
+                        fillMode: Image.PreserveAspectFit
+                        opacity: 0.08
+                    }
+                }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: Theme.spaceXl
+                    spacing: Theme.spaceM
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignBottom
+                        spacing: Theme.spaceXs
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: detail.clubName
+                            color: Theme.text
+                            font.pointSize: Theme.fontHero
+                            font.bold: true
+                            elide: Text.ElideRight
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: detail.club && detail.club.specs ? detail.club.specs : ""
+                            color: Theme.textMuted
+                            font.pointSize: Theme.fontBody
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.alignment: Qt.AlignBottom
+                        spacing: Theme.spaceXs
+
+                        Label {
+                            Layout.alignment: Qt.AlignRight
+                            text: Theme.pricePerHour(detail.club ? detail.club.price_per_hour : 0)
+                            color: Theme.text
+                            font.pointSize: Theme.fontHeader
+                            font.bold: true
+                        }
+
+                        StatusPill {
+                            Layout.alignment: Qt.AlignRight
+                            text: Api.clubAvailabilityText(detail.club)
+                            tone: Api.clubTone(detail.club)
+                        }
+                    }
+                }
+            }
+
+            ErrorBanner {
+                width: parent.width
+                visible: detail.hasError
+                text: detail.errorText
+                detail: detail.serverError
+                canRetry: detail.canPlay || detail.canQueue
+                onRetry: {
+                    if (detail.canPlay) {
+                        detail.startSession()
+                    }
+                    else {
+                        detail.joinQueue()
+                    }
+                }
+            }
+
+            ErrorBanner {
+                width: parent.width
+                visible: detail.stale
+                text: qsTr("Данные устарели. Обновите список.")
+                detail: qsTr("Цены и доступность показаны по состоянию на %1.").arg(Theme.timeText(detail.updatedAt))
+                canRetry: true
+                onRetry: {
+                    if (detail.club && detail.club.slug) {
+                        Api.getClub(detail.api, detail.club.slug)
+                    }
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: Theme.spaceL
+
+                NeonFrame {
+                    width: parent.width * 0.58
+                    height: infoColumn.implicitHeight + Theme.spaceXl * 2
+
+                    ColumnLayout {
+                        id: infoColumn
+                        anchors.fill: parent
+                        anchors.margins: Theme.spaceXl
+                        spacing: Theme.spaceS
+
+                        Label {
+                            Layout.fillWidth: true
+                            visible: detail.club && detail.club.description
+                            text: detail.club && detail.club.description ? detail.club.description : ""
+                            color: Theme.text
+                            font.pointSize: Theme.fontBody
+                            wrapMode: Text.Wrap
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("Свободно %1 из %2 ПК").arg(detail.freeUnits)
+                                  .arg(detail.club ? (detail.club.total_units || 0) : 0)
+                            color: Theme.textMuted
+                            font.pointSize: Theme.fontBody
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            visible: detail.club && detail.club.queue_length > 0
+                            text: qsTr("В очереди: %1").arg(detail.club ? detail.club.queue_length : 0)
+                            color: Theme.warning
+                            font.pointSize: Theme.fontBody
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: {
+                                if (!detail.club || !detail.club.schedule) {
+                                    return qsTr("Работает по расписанию клуба")
+                                }
+                                if (detail.club.schedule.closed) {
+                                    return qsTr("Закрыто. Откроется позже.")
+                                }
+                                if (detail.club.schedule.next_price_per_hour) {
+                                    return qsTr("После смены тарифа: %1")
+                                        .arg(Theme.pricePerHour(detail.club.schedule.next_price_per_hour))
+                                }
+                                return qsTr("Работает по расписанию клуба")
+                            }
+                            color: Theme.textMuted
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.Wrap
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("Данные обновлены %1").arg(Theme.ageText(detail.updatedAt))
+                            color: detail.stale ? Theme.warning : Theme.textDim
+                            font.pointSize: Theme.fontSmall
+                        }
+                    }
+                }
+
+                BalancePanel {
+                    width: parent.width * 0.42 - Theme.spaceL
+                    height: infoColumn.implicitHeight + Theme.spaceXl * 2
+                    clubName: qsTr("Баланс для этого клуба")
+                    balance: detail.balance
+                    bonus: detail.walletRow ? detail.walletRow.bonus : "0"
+                    minutes: detail.walletRow ? Number(detail.walletRow.minutes || 0) : -1
+                }
+            }
+
+            Column {
+                width: parent.width
+                spacing: Theme.spaceS
+
+                Label {
+                    width: parent.width
+                    visible: detail.blockedReason.length > 0
+                    text: detail.blockedReason
+                    color: Theme.warning
+                    font.pointSize: Theme.fontBody
+                    wrapMode: Text.Wrap
+                }
+
+                Row {
+                    spacing: Theme.spaceM
+
+                    LegionButton {
+                        id: playButton
+                        kind: detail.canPlay ? "primary" : "secondary"
+                        enabled: detail.canPlay
+                        focus: detail.canPlay
+                        text: detail.starting ? qsTr("Запускаем…") : qsTr("Играть")
+                        onClicked: detail.startSession()
+                    }
+
+                    LegionButton {
+                        kind: "secondary"
+                        enabled: detail.canQueue && detail.freeUnits <= 0
+                        text: detail.joining ? qsTr("Встаём в очередь…") : qsTr("В очередь")
+                        onClicked: detail.joinQueue()
+                    }
+
+                    LegionButton {
+                        kind: detail.hasFunds ? "secondary" : "primary"
+                        text: qsTr("Пополнить")
+                        onClicked: detail.go("qrc:/gui/legion/PaymentView.qml",
+                                             { clubId: detail.clubId, clubName: detail.clubName })
+                    }
+
+                    LegionButton {
+                        kind: "ghost"
+                        text: qsTr("Обновить")
+                        onClicked: {
+                            if (detail.club && detail.club.slug) {
+                                Api.getClub(detail.api, detail.club.slug)
+                            }
+                            if (detail.shell) {
+                                detail.shell.refreshWallet()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    readonly property var walletRow: shell ? shell.walletFor(clubId) : null
+}
