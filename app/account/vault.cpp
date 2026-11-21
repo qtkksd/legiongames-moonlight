@@ -14,6 +14,10 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
 #elif defined(HAVE_LIBSECRET)
+// glib/gio headers use "signals" as a struct field name, while Qt defines
+// "signals" as a macro. Drop the macro for the C headers; this file declares
+// no Qt signals after this point.
+#undef signals
 #include <libsecret/secret.h>
 #endif
 
