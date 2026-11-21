@@ -91,7 +91,9 @@ void AutoUpdateChecker::start()
 
     QNetworkRequest request{QUrl(QStringLiteral(LG_MANIFEST_URL))};
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
     request.setTransferTimeout(20000);
+#endif
 
     QNetworkReply *reply = m_Nam->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -260,7 +262,9 @@ void AutoUpdateChecker::downloadVerifiedAsset(const UpdateAsset &asset)
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
     request.setTransferTimeout(600000);
+#endif
 
     QFile *file = new QFile(targetPath);
     if (!file->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
