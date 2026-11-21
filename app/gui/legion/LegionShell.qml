@@ -261,6 +261,35 @@ Item {
         }
     }
 
+    // The window forces focus on the pushed page (main.qml), which would land
+    // on this shell root. Restore focus to the topmost screen once the push
+    // has settled; only navigation and startup call this.
+    function restoreFocus() {
+        if (shell.wordsVisible && wordsOverlay.item &&
+                typeof wordsOverlay.item.focusFirst === "function") {
+            wordsOverlay.item.focusFirst()
+        }
+        else if (shell.reconsentVisible && consentOverlay.item &&
+                 typeof consentOverlay.item.focusFirst === "function") {
+            consentOverlay.item.focusFirst()
+        }
+        else if (shell.recoveryVisible && recoveryOverlay.item &&
+                 typeof recoveryOverlay.item.focusFirst === "function") {
+            recoveryOverlay.item.focusFirst()
+        }
+        else if (shell.mode === "onboarding" && onboardingLoader.item &&
+                 typeof onboardingLoader.item.focusFirst === "function") {
+            onboardingLoader.item.focusFirst()
+        }
+        else if (shell.mode === "startup" && startupLoader.item &&
+                 typeof startupLoader.item.focusFirst === "function") {
+            startupLoader.item.focusFirst()
+        }
+        else if (shell.mode === "app") {
+            focusContentArea()
+        }
+    }
+
     // ---- lifecycle ------------------------------------------------------
 
     Component.onCompleted: {
@@ -268,6 +297,7 @@ Item {
             primeApp()
         }
         syncWords()
+        Qt.callLater(shell.restoreFocus)
     }
 
     onModeChanged: {
