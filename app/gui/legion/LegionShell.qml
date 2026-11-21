@@ -97,6 +97,10 @@ Item {
     property bool recoveryVisible: false
     property bool reconsentVisible: false
 
+    // Written recovery kit file (recoveryKitWritten signal)
+    property string kitPath: ""
+    property bool kitInSyncedFolder: false
+
     // ---- navigation -----------------------------------------------------
 
     function setPage(url, pageParamsValue, focusContent) {
@@ -364,6 +368,11 @@ Item {
             shell.wordsHandle = handle ? String(handle) : shell.handle
             shell.wordsList = words ? words : []
             shell.wordsVisible = shell.wordsList.length > 0
+        }
+
+        function onRecoveryKitWritten(path, syncedFolder) {
+            shell.kitPath = path ? String(path) : ""
+            shell.kitInSyncedFolder = syncedFolder === true
         }
 
         function onConsentRequired() {

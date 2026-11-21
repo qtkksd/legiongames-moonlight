@@ -123,7 +123,7 @@ LegionView {
             if (op === "club" || op === "session_start" || op === "queue_join") {
                 detail.starting = false
                 detail.joining = false
-                detail.showError(code, message)
+                detail.showError(code, message, op)
             }
         }
     }

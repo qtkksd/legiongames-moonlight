@@ -130,7 +130,7 @@ LegionView {
             if (op === "queue_join" || op === "queue_leave" || op === "queue_claim") {
                 queue.joining = false
                 queue.claiming = false
-                queue.showError(code, message)
+                queue.showError(code, message, op)
                 if (queue.shell) {
                     queue.shell.refreshQueue()
                 }

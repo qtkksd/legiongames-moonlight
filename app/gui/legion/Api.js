@@ -1,27 +1,33 @@
 .pragma library
 
 // Facade over the `legionApi` QML context property supplied by the account
-// backend (notes/build-interfaces.md section 4). Nothing here may assume a
-// name that is not in that contract: every call is guarded so a partially
-// landed backend degrades to a readable error instead of a QML exception.
+// backend (app/account/legionapi.h). Nothing here may assume a name that the
+// backend does not publish: every call is guarded so a missing method degrades
+// to a readable error instead of a QML exception.
 //
 // Properties read by the UI:
 //   state, handle, onboardingStep, busy, lastError, lastErrorCode, words,
-//   catalogUpdatedAt
+//   catalogUpdatedAt, device, legalDocuments, ageNotice, installPath
 // Invokables used here:
-//   setConsent, register, login, logout, confirmWordsSaved, reissueWords,
-//   recoverPrepare, recoverComplete, refreshMe, getClubs, getClub, getWallet,
-//   createTopup, pollIntent, startSession, getCurrentSession, stopSession,
-//   extendSession, reconnectSession, getQueue, joinQueue, leaveQueue,
-//   claimQueue, openExternal, retryFailedStep
+//   setConsent, submitConsent, registerAccount (legacy alias: register), login,
+//   logout, confirmWordsSaved, reissueWords, reprintRecoveryKit, recoverComplete,
+//   refreshMe, getClubs, getClub, getWallet, createTopup, pollIntent,
+//   reissueHandoff, startSession, getCurrentSession, stopSession,
+//   extendSession, reconnectSession, getQueue, joinQueue, leaveQueue, claimQueue,
+//   getLegalDocuments, deleteAccount, openExternal, openLogFolder,
+//   retryFailedStep
 // Signals consumed by views:
-//   stateChanged, wordsReady(handle, words), consentRequired,
-//   paymentReturned(publicId), response(op, data), failed(op, code, message)
+//   stateChanged, wordsReady(handle, words), recoveryKitWritten(path,
+//   syncedFolder), consentRequired, paymentReturned(publicId),
+//   response(op, data), failed(op, code, message)
 //
-// Response ops:
-//   clubs, club, wallet, topup, intent, session_start, session_current,
-//   session_stop, session_extend, session_reconnect, queue, queue_join,
-//   queue_leave, queue_claim
+// Response ops handled by the UI:
+//   clubs, club, wallet, topup, intent, handoff, session_start,
+//   session_current, session_stop, session_extend, session_reconnect, queue,
+//   queue_join, queue_leave, queue_claim, confirm_words, refresh_me,
+//   account_delete, legal_documents, kit, open_logs
+// getWalletHistory / `wallet_history` exists on the backend but has no UI
+// section yet: the ledger item schema is not part of Contract v1.4.
 
 var staleSeconds = 600
 
@@ -74,8 +80,27 @@ function setConsent(api, agreement, pdnConsent) {
     return call2(api, "setConsent", agreement === true, pdnConsent === true)
 }
 
+// The backend invokable is registerAccount(); `register` is a C++ keyword and
+// was only a draft name. Direct property access on purpose: registration is
+// the one call that must not depend on the generic dynamic dispatcher.
 function register(api, label) {
-    return call1(api, "register", label)
+    if (!available(api)) {
+        return false
+    }
+    if (typeof api.registerAccount === "function") {
+        api.registerAccount(label)
+        return true
+    }
+    if (typeof api.register === "function") {
+        api.register(label)
+        return true
+    }
+    return false
+}
+
+// Submits the consent recorded by setConsent for an existing account.
+function submitConsent(api) {
+    return call0(api, "submitConsent")
 }
 
 function login(api) {
@@ -94,17 +119,29 @@ function reissueWords(api) {
     return call0(api, "reissueWords")
 }
 
-// Web-only verification path: the app itself uses recoverComplete.
-function recoverPrepare(api, handle, words) {
-    return call2(api, "recoverPrepare", handle, words)
+// Rewrites the recovery kit file without rotating the words.
+function reprintRecoveryKit(api) {
+    return call0(api, "reprintRecoveryKit")
 }
 
+function hasReprintRecoveryKit(api) {
+    return has(api, "reprintRecoveryKit")
+}
+
+// Web-only verification path is not used by the app UI; the app completes
+// recovery with recoverComplete below.
 function recoverComplete(api, handle, words, label) {
     return call3(api, "recoverComplete", handle, words, label)
 }
 
 function refreshMe(api) {
     return call0(api, "refreshMe")
+}
+
+// ---- legal documents ----------------------------------------------------
+
+function getLegalDocuments(api) {
+    return call0(api, "getLegalDocuments")
 }
 
 // ---- catalog ------------------------------------------------------------
@@ -129,6 +166,16 @@ function createTopup(api, clubId, amount) {
 
 function pollIntent(api, publicId) {
     return call1(api, "pollIntent", publicId)
+}
+
+// Issues a fresh handoff URL for an existing pending intent. Needed once the
+// original 120 s handoff code has expired; the response op is `handoff`.
+function reissueHandoff(api, publicId) {
+    return call1(api, "reissueHandoff", publicId)
+}
+
+function hasReissueHandoff(api) {
+    return has(api, "reissueHandoff")
 }
 
 // ---- sessions -----------------------------------------------------------
@@ -181,8 +228,16 @@ function retryFailedStep(api) {
     return call0(api, "retryFailedStep")
 }
 
-// Account deletion is not part of the published bridge yet; the UI calls it
-// only when present and otherwise points at support (see AccountView.qml).
+function openLogFolder(api) {
+    return call0(api, "openLogFolder")
+}
+
+function hasOpenLogFolder(api) {
+    return has(api, "openLogFolder")
+}
+
+// Account deletion takes the handle plus the eight words as a list; the UI
+// calls it only when present and otherwise points at support.
 function hasDeleteAccount(api) {
     return has(api, "deleteAccount")
 }
@@ -240,6 +295,24 @@ function intentStatusOf(data) {
         return ""
     }
     return data.status
+}
+
+// ---- backend properties -------------------------------------------------
+
+// URL of a legal document by id (user_agreement, pdn_consent, ...).
+// Bindings must pass a QML-level property as `documents` so the binding
+// depends on it: reading api.legalDocuments inside a .pragma library function
+// is invisible to the binding engine.
+function documentUrlIn(documents, documentId) {
+    if (!documents) {
+        return ""
+    }
+    for (var i = 0; i < documents.length; i++) {
+        if (String(documents[i].document_id) === String(documentId) && documents[i].url) {
+            return String(documents[i].url)
+        }
+    }
+    return ""
 }
 
 // ---- catalog helpers ----------------------------------------------------
@@ -578,6 +651,17 @@ function errorText(code, message) {
     return fallback
 }
 
+// Error text with a short operation title so a banner never says just
+// "Действие". The generic title is dropped.
+function errorTextFor(op, code, message) {
+    var text = errorText(code, message)
+    var title = op ? opTitle(String(op)) : ""
+    if (title.length > 0 && title !== "Действие") {
+        return title + ": " + text
+    }
+    return text
+}
+
 // A short operation title for error banners: "Пополнение", "Сессия", ...
 function opTitle(op) {
     switch (op) {
@@ -587,9 +671,13 @@ function opTitle(op) {
         return "Клуб"
     case "wallet":
         return "Кошелёк"
+    case "wallet_history":
+        return "История пополнений"
     case "topup":
     case "intent":
         return "Пополнение"
+    case "handoff":
+        return "Оплата"
     case "session_start":
     case "session_current":
     case "session_stop":
@@ -602,11 +690,24 @@ function opTitle(op) {
     case "queue_claim":
         return "Очередь"
     case "register":
+    case "register_account":
         return "Создание аккаунта"
     case "login":
         return "Вход"
     case "recover":
         return "Восстановление"
+    case "confirm_words":
+        return "Набор восстановления"
+    case "refresh_me":
+        return "Аккаунт"
+    case "account_delete":
+        return "Удаление аккаунта"
+    case "legal_documents":
+        return "Документы"
+    case "kit":
+        return "Набор восстановления"
+    case "open_logs":
+        return "Логи"
     default:
         return "Действие"
     }

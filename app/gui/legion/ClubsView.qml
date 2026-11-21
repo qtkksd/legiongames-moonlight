@@ -113,7 +113,7 @@ LegionView {
             Layout.fillWidth: true
             Layout.preferredHeight: implicitHeight
             visible: clubs.loadErrorCode.length > 0
-            text: Api.errorText(clubs.loadErrorCode, clubs.loadErrorMessage)
+            text: Api.errorTextFor("clubs", clubs.loadErrorCode, clubs.loadErrorMessage)
             canRetry: true
             onRetry: clubs.refresh()
         }

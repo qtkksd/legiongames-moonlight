@@ -151,17 +151,17 @@ LegionView {
         function onFailed(op, code, message) {
             if (op === "session_stop") {
                 sessionView.stopping = false
-                sessionView.showError(code, message)
+                sessionView.showError(code, message, op)
                 if (sessionView.shell) {
                     sessionView.shell.refreshSession()
                 }
             }
             else if (op === "session_extend") {
                 sessionView.extending = false
-                sessionView.showError(code, message)
+                sessionView.showError(code, message, op)
             }
             else if (op === "session_reconnect" || op === "session_current") {
-                sessionView.showError(code, message)
+                sessionView.showError(code, message, op)
             }
         }
     }

@@ -34,7 +34,18 @@ LegionView {
                                       agreementChecked && pdnChecked &&
                                       !submitting && !serverBusy
 
+    readonly property var legalDocuments: (api && api.legalDocuments) ? api.legalDocuments : []
+    readonly property string ageNotice: api ? (api.ageNotice || "") : ""
+    readonly property string agreementUrl: Api.documentUrlIn(legalDocuments, "user_agreement")
+    readonly property string pdnUrl: Api.documentUrlIn(legalDocuments, "pdn_consent")
+    readonly property string ageNoticeText: ageNotice.length > 0
+                                            ? ageNotice
+                                            : qsTr("Сервис предназначен для лиц старше 18 лет.")
+
     function activate() {
+        if (legalDocuments.length === 0) {
+            Api.getLegalDocuments(api)
+        }
         handleField.forceActiveFocus()
         clearError()
     }
@@ -75,8 +86,11 @@ LegionView {
         ignoreUnknownSignals: true
 
         function onFailed(op, code, message) {
+            if (op === "legal_documents") {
+                return
+            }
             recovery.submitting = false
-            recovery.showError(code, message)
+            recovery.showError(code, message, op)
         }
 
         function onStateChanged() {
@@ -224,6 +238,15 @@ LegionView {
                     onToggled: recovery.agreementChecked = checked
                 }
 
+                LegionButton {
+                    Layout.leftMargin: Theme.spaceXl
+                    kind: "ghost"
+                    compact: true
+                    visible: recovery.agreementUrl.length > 0
+                    text: qsTr("Открыть текст")
+                    onClicked: recovery.openUrl(recovery.agreementUrl)
+                }
+
                 CheckBox {
                     Layout.fillWidth: true
                     text: qsTr("Я даю согласие на обработку персональных данных")
@@ -232,11 +255,21 @@ LegionView {
                     onToggled: recovery.pdnChecked = checked
                 }
 
+                LegionButton {
+                    Layout.leftMargin: Theme.spaceXl
+                    kind: "ghost"
+                    compact: true
+                    visible: recovery.pdnUrl.length > 0
+                    text: qsTr("Открыть текст")
+                    onClicked: recovery.openUrl(recovery.pdnUrl)
+                }
+
                 Label {
                     Layout.fillWidth: true
-                    text: qsTr("Сервис предназначен для лиц старше 18 лет.")
+                    text: recovery.ageNoticeText
                     color: Theme.textMuted
                     font.pointSize: Theme.fontSmall
+                    wrapMode: Text.Wrap
                 }
 
                 ErrorBanner {

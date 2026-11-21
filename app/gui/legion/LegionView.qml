@@ -43,9 +43,12 @@ Item {
     // Local error surfaced by this page (a failed(op) routed here).
     property string errorCode: ""
     property string errorMessage: ""
+    property string errorOp: ""
 
     readonly property bool hasError: errorCode.length > 0 || errorMessage.length > 0
-    readonly property string errorText: hasError ? Api.errorText(errorCode, errorMessage) : ""
+    readonly property string errorText: hasError
+                                        ? Api.errorTextFor(errorOp, errorCode, errorMessage)
+                                        : ""
 
     // Overridden by concrete pages.
     function activate() {
@@ -58,14 +61,16 @@ Item {
         forceActiveFocus()
     }
 
-    function showError(code, message) {
+    function showError(code, message, op) {
         errorCode = code ? String(code) : ""
         errorMessage = message ? String(message) : ""
+        errorOp = op ? String(op) : ""
     }
 
     function clearError() {
         errorCode = ""
         errorMessage = ""
+        errorOp = ""
     }
 
     function openUrl(url) {

@@ -14,6 +14,14 @@ LegionView {
     id: account
 
     readonly property bool deletionAvailable: Api.hasDeleteAccount(api)
+    readonly property bool reprintAvailable: Api.hasReprintRecoveryKit(api)
+    // `device` is a notifyable backend property: read it in the binding so the
+    // card updates when the label or version changes.
+    readonly property var device: (api && api.device) ? api.device : null
+    readonly property string deviceLabel: device && device.label ? String(device.label) : ""
+    readonly property string deviceOs: device && device.os ? String(device.os) : ""
+    readonly property string deviceVersion: device && device.app_version
+                                          ? String(device.app_version) : ""
 
     function activate() {
         Api.refreshMe(api)
@@ -32,6 +40,11 @@ LegionView {
         Api.reissueWords(api)
     }
 
+    function reprintKit() {
+        clearError()
+        Api.reprintRecoveryKit(api)
+    }
+
     function startRecovery() {
         if (shell) {
             shell.recoveryVisible = true
@@ -42,8 +55,9 @@ LegionView {
         if (deleteHandle.text.trim().length === 0 || deleteWords.text.trim().length === 0) {
             return
         }
-        // deleteAccount(handle, words) is not in the published bridge yet; the
-        // button is shown only when the backend provides it.
+        // deleteAccount(handle, words) is only called when the backend exposes
+        // it; otherwise the panel points at support instead.
+        clearError()
         var parts = deleteWords.text.trim().toLowerCase().split(/\s+/)
         Api.deleteAccount(api, deleteHandle.text.trim(), parts)
     }
@@ -53,7 +67,7 @@ LegionView {
         ignoreUnknownSignals: true
 
         function onFailed(op, code, message) {
-            account.showError(code, message)
+            account.showError(code, message, op)
         }
     }
 
@@ -115,10 +129,48 @@ LegionView {
 
                     Label {
                         Layout.fillWidth: true
-                        text: qsTr("Этот компьютер — единственное устройство аккаунта. " +
-                                   "Имя устройства задаётся при создании аккаунта.")
+                        text: qsTr("Этот компьютер — единственное устройство аккаунта.")
                         color: Theme.textMuted
                         font.pointSize: Theme.fontBody
+                        wrapMode: Text.Wrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: account.device !== null
+                        text: qsTr("Устройство: %1").arg(account.deviceLabel.length > 0
+                                                          ? account.deviceLabel
+                                                          : qsTr("без имени"))
+                        color: Theme.text
+                        font.pointSize: Theme.fontBody
+                        elide: Text.ElideRight
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: account.device !== null &&
+                                 (account.deviceOs.length > 0 || account.deviceVersion.length > 0)
+                        text: {
+                            var parts = []
+                            if (account.deviceOs.length > 0) {
+                                parts.push(account.deviceOs)
+                            }
+                            if (account.deviceVersion.length > 0) {
+                                parts.push(qsTr("версия %1").arg(account.deviceVersion))
+                            }
+                            return parts.join(" · ")
+                        }
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontSmall
+                        elide: Text.ElideRight
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: account.device === null
+                        text: qsTr("Имя устройства задаётся при создании аккаунта.")
+                        color: Theme.textDim
+                        font.pointSize: Theme.fontSmall
                         wrapMode: Text.Wrap
                     }
 
@@ -175,6 +227,13 @@ LegionView {
                             kind: "secondary"
                             text: qsTr("Перевыпустить набор")
                             onClicked: reissueDialog.open()
+                        }
+
+                        LegionButton {
+                            kind: "secondary"
+                            visible: account.reprintAvailable
+                            text: qsTr("Сохранить файл набора заново")
+                            onClicked: account.reprintKit()
                         }
 
                         Item { Layout.fillWidth: true }

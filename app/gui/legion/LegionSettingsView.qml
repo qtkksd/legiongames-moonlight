@@ -28,6 +28,11 @@ LegionView {
     }
 
     readonly property string appFolder: {
+        var configured = api && api.installPath ? String(api.installPath) : ""
+        if (configured.length > 0) {
+            return configured
+        }
+        // Fall back to the executable directory for older builds.
         var args = Qt.application.arguments
         if (!args || args.length === 0) {
             return "—"
@@ -36,6 +41,8 @@ LegionView {
         var cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))
         return cut > 0 ? path.substring(0, cut) : path
     }
+
+    readonly property bool logFolderAvailable: Api.hasOpenLogFolder(api)
 
     readonly property bool offline: appState === "offline" || lastErrorCode === "offline"
     readonly property bool updateRequired: lastErrorCode === "client_update_required"
@@ -207,6 +214,13 @@ LegionView {
                             kind: "secondary"
                             text: qsTr("Открыть папку приложения")
                             onClicked: settings.openUrl("file:///" + settings.appFolder)
+                        }
+
+                        LegionButton {
+                            kind: "secondary"
+                            visible: settings.logFolderAvailable
+                            text: qsTr("Открыть папку логов")
+                            onClicked: Api.openLogFolder(settings.api)
                         }
 
                         LegionButton {

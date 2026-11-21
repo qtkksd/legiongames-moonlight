@@ -52,9 +52,14 @@ LegionView {
     readonly property bool canPay: clubId > 0 && amount >= 1 && amount <= 10000 && !submitting
     readonly property bool waiting: stage === "waiting"
     property bool handoffFresh: false
+    property bool reissuing: false
+
+    // A fresh 120 s handoff can be re-issued for the same pending intent.
+    readonly property bool canReissue: Api.hasReissueHandoff(api) && publicId.length > 0
 
     function activate() {
         submitting = false
+        reissuing = false
         pollTries = 0
         intentStatus = ""
         intentAmount = ""
@@ -122,6 +127,23 @@ LegionView {
         openExternal(handoffUrl)
     }
 
+    // The handoff code lives 120 s. Once it is stale, ask the backend for a
+    // new URL for the same intent instead of creating a second intent.
+    function reopenPayment() {
+        if (handoffFresh) {
+            reopenBrowser()
+            return
+        }
+        if (!canReissue || reissuing) {
+            return
+        }
+        clearError()
+        reissuing = true
+        if (!Api.reissueHandoff(api, publicId)) {
+            reissuing = false
+        }
+    }
+
     function refreshHandoffFreshness() {
         handoffFresh = handoffUrl.length > 0 &&
                        (new Date().getTime() - handoffAt) < 110000
@@ -167,6 +189,24 @@ LegionView {
                 }
                 payment.startPolling()
             }
+            else if (op === "handoff") {
+                payment.reissuing = false
+                var url = ""
+                if (data && data.url) {
+                    url = String(data.url)
+                }
+                else if (data && data.handoff_url) {
+                    url = String(data.handoff_url)
+                }
+                if (url.length > 0) {
+                    payment.handoffUrl = url
+                    payment.handoffAt = new Date().getTime()
+                    payment.refreshHandoffFreshness()
+                    payment.stage = "waiting"
+                    payment.openExternal(url)
+                    payment.startPolling()
+                }
+            }
             else if (op === "intent") {
                 payment.pollTries = payment.pollTries + 1
                 payment.intentAmount = data && data.amount ? String(data.amount) : ""
@@ -188,11 +228,15 @@ LegionView {
         function onFailed(op, code, message) {
             if (op === "topup") {
                 payment.submitting = false
-                payment.showError(code, message)
+                payment.showError(code, message, op)
+            }
+            else if (op === "handoff") {
+                payment.reissuing = false
+                payment.showError(code, message, op)
             }
             else if (op === "intent") {
                 payment.pollTries = payment.pollTries + 1
-                payment.showError(code, message)
+                payment.showError(code, message, op)
                 if (code === "not_found" || payment.pollTries >= 30) {
                     payment.pollTimer.stop()
                     payment.stage = "timeout"
@@ -487,7 +531,9 @@ LegionView {
                         Layout.fillWidth: true
                         text: payment.handoffFresh
                               ? qsTr("Если браузер закрылся, откройте страницу оплаты снова.")
-                              : qsTr("Ссылка на оплату истекла. Если оплата не прошла, создайте новое пополнение.")
+                              : (payment.canReissue
+                                 ? qsTr("Ссылка на оплату действует 2 минуты. Откройте платёж снова — клуб и сумма останутся прежними.")
+                                 : qsTr("Ссылка на оплату истекла. Если оплата не прошла, создайте новое пополнение."))
                         color: payment.handoffFresh ? Theme.textMuted : Theme.warning
                         font.pointSize: Theme.fontSmall
                         wrapMode: Text.Wrap
@@ -510,9 +556,13 @@ LegionView {
 
                         LegionButton {
                             kind: "secondary"
-                            enabled: payment.handoffFresh
-                            text: qsTr("Открыть браузер снова")
-                            onClicked: payment.reopenBrowser()
+                            visible: payment.handoffFresh || payment.canReissue
+                            enabled: (payment.handoffFresh || payment.canReissue) && !payment.reissuing
+                            text: payment.reissuing
+                                  ? qsTr("Запрашиваем ссылку…")
+                                  : (payment.handoffFresh ? qsTr("Открыть браузер снова")
+                                                          : qsTr("Открыть оплату снова"))
+                            onClicked: payment.reopenPayment()
                         }
 
                         LegionButton {
@@ -644,6 +694,14 @@ LegionView {
                             visible: payment.stage === "timeout"
                             text: qsTr("Проверить статус")
                             onClicked: payment.checkStatus()
+                        }
+
+                        LegionButton {
+                            kind: "secondary"
+                            visible: payment.stage === "timeout" && payment.canReissue
+                            enabled: !payment.reissuing
+                            text: qsTr("Открыть оплату снова")
+                            onClicked: payment.reopenPayment()
                         }
 
                         LegionButton {

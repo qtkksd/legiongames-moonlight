@@ -35,7 +35,7 @@ LegionView {
 
         function onFailed(op, code, message) {
             if (op === "wallet") {
-                wallet.showError(code, message)
+                wallet.showError(code, message, op)
             }
         }
     }

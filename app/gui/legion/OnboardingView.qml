@@ -29,7 +29,21 @@ LegionView {
                                         deviceLabel.trim().length > 0 &&
                                         !submitting && !serverBusy
 
+    // Legal documents come from the backend property; the URLs are only used
+    // to open the exact served text for each checkbox.
+    readonly property var legalDocuments: (api && api.legalDocuments) ? api.legalDocuments : []
+    readonly property string agreementUrl: Api.documentUrlIn(legalDocuments, "user_agreement")
+    readonly property string pdnUrl: Api.documentUrlIn(legalDocuments, "pdn_consent")
+    readonly property bool hasDocumentLinks: agreementUrl.length > 0 || pdnUrl.length > 0
+    readonly property string ageNotice: api ? (api.ageNotice || "") : ""
+    readonly property string ageNoticeText: ageNotice.length > 0
+                                            ? ageNotice
+                                            : qsTr("Сервис предназначен для лиц старше 18 лет.")
+
     function activate() {
+        if (legalDocuments.length === 0) {
+            Api.getLegalDocuments(api)
+        }
         if (!wordsPending) {
             agreementBox.forceActiveFocus()
         }
@@ -47,7 +61,11 @@ LegionView {
                 return
             }
             Api.setConsent(api, true, true)
-            Api.retryFailedStep(api)
+            // submitConsent is the dedicated invokable; retryFailedStep keeps
+            // older builds working.
+            if (!Api.submitConsent(api)) {
+                Api.retryFailedStep(api)
+            }
             Api.refreshMe(api)
             if (shell) {
                 shell.reconsentVisible = false
@@ -60,7 +78,10 @@ LegionView {
         clearError()
         submitting = true
         Api.setConsent(api, true, true)
-        Api.register(api, deviceLabel.trim())
+        if (!Api.register(api, deviceLabel.trim())) {
+            submitting = false
+            showError("unsupported_capability", "", "register")
+        }
     }
 
     Connections {
@@ -68,8 +89,12 @@ LegionView {
         ignoreUnknownSignals: true
 
         function onFailed(op, code, message) {
+            if (op === "legal_documents") {
+                // Document URLs are informational here; never block consent.
+                return
+            }
             onboarding.submitting = false
-            onboarding.showError(code, message)
+            onboarding.showError(code, message, op)
         }
 
         function onWordsReady(handle, words) {
@@ -190,6 +215,15 @@ LegionView {
                         onToggled: onboarding.agreementChecked = checked
                     }
 
+                    LegionButton {
+                        Layout.leftMargin: Theme.spaceXl
+                        kind: "ghost"
+                        compact: true
+                        visible: onboarding.agreementUrl.length > 0
+                        text: qsTr("Открыть текст")
+                        onClicked: onboarding.openUrl(onboarding.agreementUrl)
+                    }
+
                     CheckBox {
                         id: pdnBox
                         Layout.fillWidth: true
@@ -199,9 +233,18 @@ LegionView {
                         onToggled: onboarding.pdnChecked = checked
                     }
 
+                    LegionButton {
+                        Layout.leftMargin: Theme.spaceXl
+                        kind: "ghost"
+                        compact: true
+                        visible: onboarding.pdnUrl.length > 0
+                        text: qsTr("Открыть текст")
+                        onClicked: onboarding.openUrl(onboarding.pdnUrl)
+                    }
+
                     Label {
                         Layout.fillWidth: true
-                        text: qsTr("Сервис предназначен для лиц старше 18 лет.")
+                        text: onboarding.ageNoticeText
                         color: Theme.textMuted
                         font.pointSize: Theme.fontSmall
                         wrapMode: Text.Wrap
@@ -209,10 +252,20 @@ LegionView {
 
                     Label {
                         Layout.fillWidth: true
+                        visible: !onboarding.hasDocumentLinks
                         text: qsTr("Полные тексты документов — на сайте legiongames.ru")
                         color: Theme.textDim
                         font.pointSize: Theme.fontCaption
                         wrapMode: Text.Wrap
+                    }
+
+                    LegionButton {
+                        Layout.leftMargin: Theme.spaceXl
+                        kind: "ghost"
+                        compact: true
+                        visible: !onboarding.hasDocumentLinks
+                        text: qsTr("Открыть сайт")
+                        onClicked: onboarding.openUrl("https://legiongames.ru/")
                     }
                 }
 
