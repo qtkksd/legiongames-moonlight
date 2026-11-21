@@ -42,7 +42,10 @@ LegionView {
         if (deleteHandle.text.trim().length === 0 || deleteWords.text.trim().length === 0) {
             return
         }
-        Api.deleteAccount(api, deleteHandle.text.trim(), deleteWords.text.trim())
+        // deleteAccount(handle, words) is not in the published bridge yet; the
+        // button is shown only when the backend provides it.
+        var parts = deleteWords.text.trim().toLowerCase().split(/\s+/)
+        Api.deleteAccount(api, deleteHandle.text.trim(), parts)
     }
 
     Connections {

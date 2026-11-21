@@ -279,6 +279,17 @@ LegionView {
                     LegionButton {
                         kind: "ghost"
                         visible: !onboarding.reconsent && !onboarding.wordsPending
+                        text: qsTr("Восстановить доступ")
+                        onClicked: {
+                            if (onboarding.shell) {
+                                onboarding.shell.recoveryVisible = true
+                            }
+                        }
+                    }
+
+                    LegionButton {
+                        kind: "ghost"
+                        visible: !onboarding.reconsent && !onboarding.wordsPending
                         text: qsTr("У меня уже есть аккаунт")
                         onClicked: Api.login(onboarding.api)
                     }
