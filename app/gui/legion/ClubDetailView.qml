@@ -51,11 +51,17 @@ LegionView {
     readonly property bool canPlay: open && freeUnits > 0 && !stale && hasFunds &&
                                     !starting && !serverBusy
     readonly property bool canQueue: open && !stale && hasFunds && !joining && !serverBusy
-    readonly property string blockedReason: Api.traceReason(club, stale, balance)
+    readonly property string blockedReason: club ? Api.traceReason(club, stale, balance) : ""
 
     function activate() {
         starting = false
         joining = false
+        if (shell && params && params.clubId !== undefined) {
+            var cached = shell.clubById(params.clubId)
+            if (cached) {
+                club = cached
+            }
+        }
         if (params && params.slug) {
             Api.getClub(api, params.slug)
         }
