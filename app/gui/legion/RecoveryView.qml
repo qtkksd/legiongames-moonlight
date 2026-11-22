@@ -17,7 +17,13 @@ LegionView {
 
     property string handleInput: ""
     property var wordInputs: ["", "", "", "", "", "", "", ""]
-    property string deviceLabel: qsTr("Новый компьютер")
+    property string deviceLabel: (api && api.suggestedDeviceLabel)
+                                  ? api.suggestedDeviceLabel
+                                  : qsTr("Новый компьютер")
+
+    readonly property string agreementDocUrl: "https://legiongames.ru/user-agreement.pdf"
+    readonly property string policyDocUrl: "https://legiongames.ru/policy.pdf"
+    readonly property string consentDocUrl: "https://legiongames.ru/privacy-consent.pdf"
 
     readonly property bool wordsComplete: {
         var filled = 0
@@ -34,18 +40,12 @@ LegionView {
                                       agreementChecked && pdnChecked &&
                                       !submitting && !serverBusy
 
-    readonly property var legalDocuments: (api && api.legalDocuments) ? api.legalDocuments : []
     readonly property string ageNotice: api ? (api.ageNotice || "") : ""
-    readonly property string agreementUrl: Api.documentUrlIn(legalDocuments, "user_agreement")
-    readonly property string pdnUrl: Api.documentUrlIn(legalDocuments, "pdn_consent")
     readonly property string ageNoticeText: ageNotice.length > 0
                                             ? ageNotice
                                             : qsTr("Сервис предназначен для лиц старше 18 лет.")
 
     function activate() {
-        if (legalDocuments.length === 0) {
-            Api.getLegalDocuments(api)
-        }
         handleField.forceActiveFocus()
         clearError()
     }
@@ -116,7 +116,7 @@ LegionView {
 
         NeonFrame {
             id: panel
-            width: Math.min(parent.width, 900)
+            width: Math.min(parent.width, 860)
             anchors.horizontalCenter: parent.horizontalCenter
             height: column.implicitHeight + Theme.spaceXxl * 2
             highlighted: true
@@ -135,7 +135,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: qsTr("Восстановление доступа")
                         color: Theme.accent
-                        font.pointSize: Theme.fontSubtitle
+                        font.pointSize: Theme.fontTitle + 2
                         font.bold: true
                     }
 
@@ -151,7 +151,7 @@ LegionView {
                     Layout.fillWidth: true
                     text: qsTr("Введите имя аккаунта и восемь слов из набора")
                     color: Theme.text
-                    font.pointSize: Theme.fontHeader
+                    font.pointSize: Theme.fontHero + 4
                     font.bold: true
                     wrapMode: Text.Wrap
                 }
@@ -161,7 +161,7 @@ LegionView {
                     text: qsTr("На этом компьютере будет создан новый ключ, а старое устройство " +
                                "отозвано. Слова не отправляются на сервер в открытом виде.")
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontBody
+                    font.pointSize: Theme.fontBody + 3
                     wrapMode: Text.Wrap
                 }
 
@@ -172,7 +172,7 @@ LegionView {
                     Label {
                         text: qsTr("Имя аккаунта")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall
+                        font.pointSize: Theme.fontSmall + 2
                     }
 
                     TextField {
@@ -180,6 +180,7 @@ LegionView {
                         Layout.fillWidth: true
                         placeholderText: "lg-..."
                         text: recovery.handleInput
+                        font.pointSize: Theme.fontBody + 2
                         onTextChanged: recovery.handleInput = text
                         Keys.onReturnPressed: recovery.focusFirst()
                     }
@@ -189,7 +190,7 @@ LegionView {
                     Layout.fillWidth: true
                     text: qsTr("Восемь слов")
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontSmall
+                    font.pointSize: Theme.fontSmall + 2
                 }
 
                 GridLayout {
@@ -205,6 +206,7 @@ LegionView {
                             Layout.fillWidth: true
                             placeholderText: qsTr("Слово %1").arg(index + 1)
                             text: recovery.wordInputs[index]
+                            font.pointSize: Theme.fontBody + 2
                             onTextChanged: recovery.setWord(index, text)
                             Keys.onReturnPressed: recovery.submit()
                             Keys.onEnterPressed: recovery.submit()
@@ -219,57 +221,86 @@ LegionView {
                     Label {
                         text: qsTr("Имя этого компьютера")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall
+                        font.pointSize: Theme.fontSmall + 2
                     }
 
                     TextField {
                         Layout.fillWidth: true
                         maximumLength: 32
                         text: recovery.deviceLabel
+                        font.pointSize: Theme.fontBody + 2
                         onTextChanged: recovery.deviceLabel = text
                     }
                 }
 
-                CheckBox {
+                RowLayout {
                     Layout.fillWidth: true
-                    text: qsTr("Я принимаю Пользовательское соглашение")
-                    font.pointSize: Theme.fontBody
-                    checked: recovery.agreementChecked
-                    onToggled: recovery.agreementChecked = checked
+                    spacing: Theme.spaceS
+
+                    CheckBox {
+                        id: agreementBox
+                        Layout.alignment: Qt.AlignTop
+                        checked: recovery.agreementChecked
+                        onToggled: recovery.agreementChecked = checked
+                        Accessible.name: qsTr("Я принимаю пользовательское соглашение")
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        textFormat: Text.RichText
+                        text: qsTr("Я принимаю <a href=\"%1\">пользовательское соглашение</a>.")
+                                  .arg(recovery.agreementDocUrl)
+                        color: Theme.text
+                        font.pointSize: Theme.fontBody + 3
+                        wrapMode: Text.Wrap
+                        onLinkActivated: recovery.openUrl(link)
+                    }
                 }
 
-                LegionButton {
-                    Layout.leftMargin: Theme.spaceXl
-                    kind: "ghost"
-                    compact: true
-                    visible: recovery.agreementUrl.length > 0
-                    text: qsTr("Открыть текст")
-                    onClicked: recovery.openUrl(recovery.agreementUrl)
-                }
-
-                CheckBox {
+                RowLayout {
                     Layout.fillWidth: true
-                    text: qsTr("Я даю согласие на обработку персональных данных")
-                    font.pointSize: Theme.fontBody
-                    checked: recovery.pdnChecked
-                    onToggled: recovery.pdnChecked = checked
-                }
+                    spacing: Theme.spaceS
 
-                LegionButton {
-                    Layout.leftMargin: Theme.spaceXl
-                    kind: "ghost"
-                    compact: true
-                    visible: recovery.pdnUrl.length > 0
-                    text: qsTr("Открыть текст")
-                    onClicked: recovery.openUrl(recovery.pdnUrl)
+                    CheckBox {
+                        id: pdnBox
+                        Layout.alignment: Qt.AlignTop
+                        checked: recovery.pdnChecked
+                        onToggled: recovery.pdnChecked = checked
+                        Accessible.name: qsTr("Я принимаю политику обработки ПДн и даю согласие на обработку")
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        textFormat: Text.RichText
+                        text: qsTr("Я принимаю <a href=\"%1\">политику обработки ПДн</a> " +
+                                   "и даю <a href=\"%2\">согласие на обработку</a>.")
+                                  .arg(recovery.policyDocUrl)
+                                  .arg(recovery.consentDocUrl)
+                        color: Theme.text
+                        font.pointSize: Theme.fontBody + 3
+                        wrapMode: Text.Wrap
+                        onLinkActivated: recovery.openUrl(link)
+                    }
                 }
 
                 Label {
                     Layout.fillWidth: true
                     text: recovery.ageNoticeText
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontSmall
+                    font.pointSize: Theme.fontSmall + 2
                     wrapMode: Text.Wrap
+                }
+
+                LegionButton {
+                    Layout.alignment: Qt.AlignLeft
+                    kind: "ghost"
+                    compact: true
+                    text: qsTr("Открыть сайт legiongames.ru")
+                    background: Rectangle {
+                        color: Theme.bg
+                        border.width: 0
+                    }
+                    onClicked: recovery.openUrl("https://legiongames.ru/")
                 }
 
                 ErrorBanner {
@@ -297,7 +328,7 @@ LegionView {
                         visible: recovery.submitting || recovery.serverBusy
                         text: qsTr("Проверяем слова и создаём ключ…")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall
+                        font.pointSize: Theme.fontSmall + 2
                     }
 
                     Item { Layout.fillWidth: true }

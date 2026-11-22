@@ -70,7 +70,7 @@ LegionView {
 
         NeonFrame {
             anchors.centerIn: parent
-            width: Math.min(parent.width, 900)
+            width: Math.min(parent.width, 860)
             height: Math.min(parent.height, column.implicitHeight + Theme.spaceXxl * 2)
             highlighted: true
             flicker: true
@@ -88,7 +88,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: qsTr("Набор восстановления")
                         color: Theme.accent
-                        font.pointSize: Theme.fontSubtitle
+                        font.pointSize: Theme.fontTitle + 2
                         font.bold: true
                     }
 
@@ -96,7 +96,7 @@ LegionView {
                         visible: words.closeAllowed
                         text: qsTr("Закрыть")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall
+                        font.pointSize: Theme.fontSmall + 1
                     }
 
                     LegionButton {
@@ -112,7 +112,7 @@ LegionView {
                     Layout.fillWidth: true
                     text: qsTr("Сохраните восемь слов")
                     color: Theme.text
-                    font.pointSize: Theme.fontHero
+                    font.pointSize: Theme.fontHero + 4
                     font.bold: true
                     wrapMode: Text.Wrap
                 }
@@ -121,7 +121,7 @@ LegionView {
                     Layout.fillWidth: true
                     text: qsTr("Аккаунт: %1").arg(words.shownHandle.length > 0 ? words.shownHandle : "—")
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontBody
+                    font.pointSize: Theme.fontBody + 3
                 }
 
                 Label {
@@ -129,7 +129,7 @@ LegionView {
                     visible: words.wordList.length === 0
                     text: qsTr("Слова не удалось получить. Выпустите новый набор.")
                     color: Theme.warning
-                    font.pointSize: Theme.fontBody
+                    font.pointSize: Theme.fontBody + 3
                     wrapMode: Text.Wrap
                 }
 
@@ -160,7 +160,7 @@ LegionView {
                                 Label {
                                     text: (index + 1) + "."
                                     color: Theme.textDim
-                                    font.pointSize: Theme.fontBody
+                                    font.pointSize: Theme.fontBody + 2
                                     font.bold: true
                                 }
 
@@ -168,7 +168,7 @@ LegionView {
                                     Layout.fillWidth: true
                                     text: modelData
                                     color: Theme.text
-                                    font.pointSize: Theme.fontTitle
+                                    font.pointSize: Theme.fontTitle + 2
                                     font.family: "monospace"
                                 }
                             }
@@ -181,7 +181,7 @@ LegionView {
                     text: qsTr("Эти слова показываются один раз. Запишите их на бумагу и храните " +
                                "отдельно от компьютера. Любой, у кого есть слова, может восстановить аккаунт.")
                     color: Theme.warning
-                    font.pointSize: Theme.fontBody
+                    font.pointSize: Theme.fontBody + 3
                     wrapMode: Text.Wrap
                 }
 
@@ -194,7 +194,7 @@ LegionView {
                         return qsTr("Файл с набором сохранён в папке «Документы/LegionGames».")
                     }
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontSmall
+                    font.pointSize: Theme.fontSmall + 2
                     wrapMode: Text.Wrap
                 }
 
@@ -203,7 +203,7 @@ LegionView {
                     visible: shell ? shell.kitInSyncedFolder : false
                     text: qsTr("Эта папка синхронизируется с облаком. Храните набор отдельно от компьютера.")
                     color: Theme.warning
-                    font.pointSize: Theme.fontSmall
+                    font.pointSize: Theme.fontSmall + 2
                     wrapMode: Text.Wrap
                 }
 
