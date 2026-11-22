@@ -377,6 +377,28 @@ private slots:
         QCOMPARE(errorCode, QStringLiteral("consent_required"));
     }
 
+    void consent_url_only_payload()
+    {
+        const QList<LegalDocumentInfo> documents = Consent::staticDocuments();
+        QString errorCode;
+        const QJsonObject payload = Consent::buildPayload(
+            QStringLiteral("cer-1"), true, true, documents, QStringLiteral("PC"),
+            QStringLiteral("1.2.3+456"), QStringLiteral("2026-11-21T12:00:00Z"),
+            &errorCode);
+
+        QVERIFY2(errorCode.isEmpty(), qPrintable(errorCode));
+        QVERIFY(!payload.isEmpty());
+        const QJsonArray entries = payload.value(QStringLiteral("documents")).toArray();
+        QCOMPARE(entries.size(), 2);
+        for (const QJsonValue &entry : entries) {
+            const QJsonObject object = entry.toObject();
+            QVERIFY(object.contains(QStringLiteral("document_id")));
+            QVERIFY(object.contains(QStringLiteral("url")));
+            QVERIFY(!object.contains(QStringLiteral("version")));
+            QVERIFY(!object.contains(QStringLiteral("sha256")));
+        }
+    }
+
     void deep_link_parsing()
     {
         const QString id = QStringLiteral("0b7f3f9e-2d1a-4c3b-8e4f-1234567890ab");

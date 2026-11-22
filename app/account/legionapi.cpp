@@ -878,12 +878,12 @@ void LegionApi::submitConsent()
         // re-consent. The payload keeps the field for schema compatibility and
         // the server verifies the signature and the version/hash pair.
         const QJsonObject payload = Consent::buildPayload(
-            QStringLiteral("reconsent"), true, true, m_documents, deviceLabel(QString()),
+            QStringLiteral("reconsent"), true, true, consentDocuments(), deviceLabel(QString()),
             AccountClient::clientVersion(),
             QDateTime::currentDateTimeUtc().toString(Qt::ISODate), &errorCode);
         if (payload.isEmpty()) {
             fail(QStringLiteral("consent"), errorCode,
-                 QStringLiteral("Не удалось подтвердить документы."));
+                 QStringLiteral("Не удалось подтвердить документы (%1).").arg(errorCode));
             return;
         }
 
@@ -974,13 +974,13 @@ void LegionApi::registerAccount(const QString &label)
 
                            QString errorCode;
                            const QJsonObject payload = Consent::buildPayload(
-                               ceremonyId, m_agreement, m_pdnConsent, m_documents,
+                               ceremonyId, m_agreement, m_pdnConsent, consentDocuments(),
                                deviceLabel(QString()), AccountClient::clientVersion(),
                                QDateTime::currentDateTimeUtc().toString(Qt::ISODate),
                                &errorCode);
                            if (payload.isEmpty()) {
                                fail(QStringLiteral("register"), errorCode,
-                                    QStringLiteral("Не удалось подтвердить документы."));
+                                    QStringLiteral("Не удалось подтвердить документы (%1).").arg(errorCode));
                                return;
                            }
 
@@ -1311,13 +1311,13 @@ void LegionApi::recoverComplete(const QString &handle, const QStringList &words,
 
                 QString errorCode;
                 const QJsonObject payload = Consent::buildPayload(
-                    ceremonyId, true, true, m_documents, deviceLabel(label),
+                    ceremonyId, true, true, consentDocuments(), deviceLabel(label),
                     AccountClient::clientVersion(),
                     QDateTime::currentDateTimeUtc().toString(Qt::ISODate), &errorCode);
                 if (payload.isEmpty()) {
                     delete newKey;
                     fail(QStringLiteral("recover"), errorCode,
-                         QStringLiteral("Не удалось подтвердить документы."));
+                         QStringLiteral("Не удалось подтвердить документы (%1).").arg(errorCode));
                     return;
                 }
 
@@ -1567,6 +1567,13 @@ QString LegionApi::deviceLabel(const QString &requested) const
         label.truncate(64);
     }
     return label;
+}
+
+QList<LegalDocumentInfo> LegionApi::consentDocuments() const
+{
+    // Static URLs are the source of truth; a failed/old /legal/documents call
+    // must never leave registration without the two gating documents.
+    return m_documents.isEmpty() ? Consent::staticDocuments() : m_documents;
 }
 
 void LegionApi::getClubs(bool availableOnly)

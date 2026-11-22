@@ -109,6 +109,19 @@ AccountClient::~AccountClient() = default;
 
 QString AccountClient::apiBaseUrl()
 {
+    // Allow a staging/local Django during testing without rebuilding the app.
+    // The production default stays unchanged.
+    const QByteArray override = qgetenv("LG_API_BASE_URL").trimmed();
+    if (!override.isEmpty()) {
+        QString base = QString::fromUtf8(override);
+        while (base.endsWith(QLatin1Char('/'))) {
+            base.chop(1);
+        }
+        if (!base.endsWith(QStringLiteral("/app/v1"))) {
+            base += QStringLiteral("/app/v1");
+        }
+        return base;
+    }
     return QStringLiteral("https://legiongames.ru/app/v1");
 }
 

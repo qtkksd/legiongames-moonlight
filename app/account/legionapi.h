@@ -166,6 +166,7 @@ private:
     QByteArray signCeremony(const QString &ceremonyId, const QString &challenge,
                             const QString &action);
     QString deviceLabel(const QString &requested) const;
+    QList<LegalDocumentInfo> consentDocuments() const;
 
     void openHandoffForIntent(const QString &publicId, const QString &handoffUrl,
                               std::function<void(const QString &url)> done,
