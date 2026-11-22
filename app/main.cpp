@@ -435,7 +435,6 @@ int main(int argc, char *argv[])
     // Keep the staging account, vault and refresh token out of the production
     // Moonlight profile on the same Windows user.
     QCoreApplication::setApplicationName("MoonlightStg");
-    QGuiApplication::setApplicationDisplayName("Moonlight STG");
 #else
     QCoreApplication::setApplicationName("Moonlight");
 #endif
@@ -761,6 +760,10 @@ int main(int argc, char *argv[])
     }
 
     QGuiApplication app(argc, argv);
+
+#ifdef LG_STAGING_BUILD
+    QGuiApplication::setApplicationDisplayName("Moonlight STG");
+#endif
 
 #ifdef Q_OS_UNIX
     // Register signal handlers to arbitrate between SDL and Qt.
