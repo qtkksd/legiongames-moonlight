@@ -122,7 +122,11 @@ QString AccountClient::apiBaseUrl()
         }
         return base;
     }
+#ifdef LG_STAGING_BUILD
+    return QStringLiteral("https://django-stg.legiongames.cell/app/v1");
+#else
     return QStringLiteral("https://legiongames.ru/app/v1");
+#endif
 }
 
 QString AccountClient::clientVersion()

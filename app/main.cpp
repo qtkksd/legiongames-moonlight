@@ -431,7 +431,14 @@ int main(int argc, char *argv[])
     // it is critical that these be called before Path::initialize().
     QCoreApplication::setOrganizationName("Moonlight Game Streaming Project");
     QCoreApplication::setOrganizationDomain("moonlight-stream.com");
+#ifdef LG_STAGING_BUILD
+    // Keep the staging account, vault and refresh token out of the production
+    // Moonlight profile on the same Windows user.
+    QCoreApplication::setApplicationName("MoonlightStg");
+    QGuiApplication::setApplicationDisplayName("Moonlight STG");
+#else
     QCoreApplication::setApplicationName("Moonlight");
+#endif
 
     if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
         QSettings::setDefaultFormat(QSettings::IniFormat);

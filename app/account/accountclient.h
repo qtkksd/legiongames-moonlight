@@ -26,7 +26,9 @@ struct ApiResult
     bool networkError = false;
 };
 
-// JSON client for https://legiongames.ru/app/v1.
+// JSON client for the LegionGames app API. The base URL defaults to
+// production; this staging branch uses django-stg.legiongames.cell and
+// LG_API_BASE_URL can override either build.
 //
 // - Bearer access token stays in memory (15 minutes).
 // - Rotating refresh token lives in the OS vault (14 days).

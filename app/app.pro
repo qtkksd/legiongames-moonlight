@@ -1,5 +1,6 @@
 QT += core quick network quickcontrols2 svg
 CONFIG += c++17
+DEFINES += LG_STAGING_BUILD
 
 # The account modules contain Russian user-facing strings as UTF-8 literals.
 # MSVC otherwise interprets source files in the active code page and mangles

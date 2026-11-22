@@ -75,6 +75,12 @@ void AutoUpdateChecker::start()
         return;
     }
 
+#ifdef LG_STAGING_BUILD
+    // A staging build must never pull the production installer over itself.
+    qInfo() << "Staging build: update checks disabled";
+    return;
+#endif
+
     if (m_UpdatesDisabled) {
         qInfo() << "Update checks are disabled (LG_UPDATES_DISABLED)";
         return;
