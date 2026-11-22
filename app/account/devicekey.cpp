@@ -359,7 +359,8 @@ DeviceKey *DeviceKey::load(Vault *vault, QString *errorCode)
     return key;
 }
 
-DeviceKey *DeviceKey::loadOrCreate(Vault *vault, bool *created, QString *errorCode)
+DeviceKey *DeviceKey::loadOrCreate(Vault *vault, bool *created, QString *errorCode,
+                                   bool allowReplaceCorrupt)
 {
     if (created) {
         *created = false;
@@ -379,15 +380,24 @@ DeviceKey *DeviceKey::loadOrCreate(Vault *vault, bool *created, QString *errorCo
         // registered account. A corrupt blob must go through recovery.
         DeviceKey *key = fromPkcs8(existing);
         if (key == nullptr) {
-            if (errorCode) {
-                *errorCode = QStringLiteral("device_key_corrupt");
+            if (!allowReplaceCorrupt) {
+                if (errorCode) {
+                    *errorCode = QStringLiteral("device_key_corrupt");
+                }
+                return nullptr;
             }
-            return nullptr;
+            // No account record exists on this PC, so the stale blob cannot
+            // belong to a registered account. Replace it instead of trapping
+            // the user on a key-not-found error.
+            qWarning() << "DeviceKey: replacing an unreadable local key blob";
+            vault->remove(vaultKey());
         }
-        if (errorCode) {
-            errorCode->clear();
+        else {
+            if (errorCode) {
+                errorCode->clear();
+            }
+            return key;
         }
-        return key;
     }
 
     DeviceKey *key = generate();

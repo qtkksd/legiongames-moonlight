@@ -30,7 +30,8 @@ public:
     // Loads the key from the vault. When it is missing, generates a new one and
     // saves it before returning so a retried registration reuses the same key.
     // Returns nullptr and sets errorCode on failure; never writes plaintext.
-    static DeviceKey *loadOrCreate(Vault *vault, bool *created, QString *errorCode);
+    static DeviceKey *loadOrCreate(Vault *vault, bool *created, QString *errorCode,
+                                   bool allowReplaceCorrupt = false);
     static DeviceKey *load(Vault *vault, QString *errorCode);
 
     bool isValid() const;

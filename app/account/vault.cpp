@@ -171,13 +171,12 @@ public:
         }
 
         if (!restrictToCurrentUser(path)) {
-            // The blob is still DPAPI-encrypted, but a failed ACL change means
-            // another local user could read (not decrypt) it. Treat as an error
-            // rather than silently keeping a weaker file.
-            m_error = QStringLiteral("vault_error");
-            qWarning() << "Vault: cannot restrict ACL on" << path;
-            QFile::remove(path);
-            return false;
+            // DPAPI already binds the blob to this Windows user. A protected
+            // DACL is defense-in-depth, but some filesystems and portable
+            // setups reject SetFileSecurityW; do not turn a readable vault
+            // into a failed account creation because of it.
+            qWarning() << "Vault: cannot restrict ACL on" << path
+                       << "- keeping the DPAPI-encrypted blob";
         }
 
         return true;

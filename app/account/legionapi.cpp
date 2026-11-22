@@ -185,7 +185,8 @@ bool LegionApi::ensureDeviceKey(const QString &op, bool create)
     QString errorCode;
     if (create) {
         bool created = false;
-        m_deviceKey = DeviceKey::loadOrCreate(m_vault, &created, &errorCode);
+        m_deviceKey = DeviceKey::loadOrCreate(m_vault, &created, &errorCode,
+                                               m_handle.isEmpty());
         if (created) {
             qInfo() << "Account: generated a new P-256 device key";
         }
@@ -195,10 +196,14 @@ bool LegionApi::ensureDeviceKey(const QString &op, bool create)
     }
 
     if (m_deviceKey == nullptr) {
+        qWarning() << "Account: device key unavailable" << op << "create=" << create
+                   << "code=" << errorCode;
         const QString message =
             errorCode == QLatin1String("vault_unavailable")
                 ? Vault::errorMessageFor(errorCode)
-                : QStringLiteral("Ключ устройства не найден. Восстановите доступ по словам.");
+                : (create ? QStringLiteral("Не удалось создать ключ устройства (%1).")
+                                .arg(errorCode)
+                          : QStringLiteral("Ключ устройства не найден. Восстановите доступ по словам."));
         fail(op, errorCode.isEmpty() ? QStringLiteral("device_key_missing") : errorCode,
              message);
         return false;
