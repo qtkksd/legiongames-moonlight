@@ -58,10 +58,17 @@ echo Staging SDL3 library
 mkdir -p $DEPLOY_FOLDER/usr/lib
 cp /usr/local/lib/libSDL3.so.0 $DEPLOY_FOLDER/usr/lib/
 
+# The app links OpenSSL directly, so linuxdeployqt would bundle the build
+# host's libssl/libcrypto. Qt's TLS plugin then mixes the bundled and system
+# copies, which segfaults inside SSL_new/SSL_clear on distributions with a
+# different OpenSSL 3 patch level. Keep the host's single OpenSSL copy.
+rm -f $DEPLOY_FOLDER/usr/lib/libssl.so.3 $DEPLOY_FOLDER/usr/lib/libcrypto.so.3
+
 echo Creating AppImage
 pushd $INSTALLER_FOLDER
 VERSION=$VERSION linuxdeployqt $DEPLOY_FOLDER/usr/share/applications/com.moonlight_stream.Moonlight.desktop \
   -qmake=qmake6 -qmldir=$SOURCE_ROOT/app/gui -appimage -extra-plugins=tls \
+  -exclude-libs=libssl.so.3,libcrypto.so.3 \
   -executable=$DEPLOY_FOLDER/usr/lib/libSDL3.so.0 || fail "linuxdeployqt failed!"
 popd
 
