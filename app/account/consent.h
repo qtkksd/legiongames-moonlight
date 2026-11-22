@@ -25,6 +25,11 @@ public:
     static QString userAgreementId();
     static QString pdnConsentId();
 
+    // Documents the app advertises on the first-run screen. They carry the
+    // production URLs and no local version/hash: the server stamps the current
+    // version and hash into the consent record.
+    static QList<LegalDocumentInfo> staticDocuments();
+
     // Parses the legal/documents response. Fails closed when the two gating
     // documents are not present with a version and a 64-hex SHA-256.
     static bool documentsFromJson(const QJsonObject &response,

@@ -1531,35 +1531,13 @@ void LegionApi::refreshMe()
 
 void LegionApi::fetchLegalDocuments(std::function<void(bool)> done)
 {
-    if (!m_documents.isEmpty()) {
+    // The app links to the documents on the website and does not download
+    // them. The consent payload carries the document IDs and production URLs;
+    // the server records the current version/hash when it accepts the consent.
+    m_documents = Consent::staticDocuments();
+    if (done) {
         done(true);
-        return;
     }
-
-    m_client->get(QStringLiteral("/legal/documents"), false, CryptoUtil::randomUuid(),
-                  [this, done](const ApiResult &result) {
-                      if (!result.ok) {
-                          m_lastErrorCode = result.errorCode;
-                          m_lastError = result.message;
-                          emit lastErrorChanged();
-                          done(false);
-                          return;
-                      }
-
-                      QString errorCode;
-                      if (!Consent::documentsFromJson(result.json, &m_documents, &errorCode)) {
-                          m_documents.clear();
-                          m_lastErrorCode = errorCode;
-                          m_lastError = QStringLiteral(
-                              "Не удалось загрузить документы. Проверьте соединение.");
-                          emit lastErrorChanged();
-                          done(false);
-                          return;
-                      }
-
-                      m_ageNotice = result.json.value(QStringLiteral("age_notice")).toString();
-                      done(true);
-                  });
 }
 
 QByteArray LegionApi::signCeremony(const QString &ceremonyId, const QString &challenge,

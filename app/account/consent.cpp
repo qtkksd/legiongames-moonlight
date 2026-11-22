@@ -41,15 +41,31 @@ bool pickDocument(const QList<LegalDocumentInfo> &documents, const QString &docu
 
 bool documentEntry(const LegalDocumentInfo &document, QJsonObject *out)
 {
-    if (document.documentId.isEmpty() || document.version.isEmpty() ||
-        !isValidSha256(document.sha256)) {
+    if (document.documentId.isEmpty()) {
+        return false;
+    }
+
+    const bool hasVersion = !document.version.isEmpty();
+    const bool hasHash = !document.sha256.isEmpty();
+    if (hasVersion != hasHash) {
+        return false;
+    }
+    if (hasVersion && !isValidSha256(document.sha256)) {
+        return false;
+    }
+    if (!hasVersion && document.url.isEmpty()) {
         return false;
     }
 
     QJsonObject entry;
     entry.insert(QStringLiteral("document_id"), document.documentId);
-    entry.insert(QStringLiteral("sha256"), document.sha256.toLower());
-    entry.insert(QStringLiteral("version"), document.version);
+    if (hasVersion) {
+        entry.insert(QStringLiteral("sha256"), document.sha256.toLower());
+        entry.insert(QStringLiteral("version"), document.version);
+    }
+    if (!document.url.isEmpty()) {
+        entry.insert(QStringLiteral("url"), document.url);
+    }
     if (out) {
         *out = entry;
     }
@@ -66,6 +82,24 @@ QString Consent::userAgreementId()
 QString Consent::pdnConsentId()
 {
     return QString::fromLatin1(kPdnConsent);
+}
+
+QList<LegalDocumentInfo> Consent::staticDocuments()
+{
+    LegalDocumentInfo agreement;
+    agreement.documentId = userAgreementId();
+    agreement.url = QStringLiteral("https://legiongames.ru/user-agreement.pdf");
+    agreement.locale = QString::fromLatin1(kLocale);
+
+    LegalDocumentInfo pdn;
+    pdn.documentId = pdnConsentId();
+    pdn.url = QStringLiteral("https://legiongames.ru/privacy-consent.pdf");
+    pdn.locale = QString::fromLatin1(kLocale);
+
+    QList<LegalDocumentInfo> documents;
+    documents.append(agreement);
+    documents.append(pdn);
+    return documents;
 }
 
 bool Consent::documentsFromJson(const QJsonObject &response,

@@ -293,17 +293,10 @@ LegionView {
                         Layout.fillWidth: true
                         text: onboarding.deviceLabel
                         maximumLength: 32
-                        placeholderText: qsTr("Например, DESKTOP-01")
                         font.pointSize: Theme.fontBody + 2
                         onTextChanged: onboarding.deviceLabel = text
                         Keys.onReturnPressed: onboarding.submit()
                         Keys.onEnterPressed: onboarding.submit()
-                    }
-
-                    Label {
-                        text: qsTr("Так этот ПК будет называться в аккаунте.")
-                        color: Theme.textDim
-                        font.pointSize: Theme.fontSmall + 1
                     }
                 }
 
