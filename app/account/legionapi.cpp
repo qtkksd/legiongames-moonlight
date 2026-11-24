@@ -130,6 +130,7 @@ void LegionApi::initialize()
 
     m_vault = new Vault();
     m_client = new AccountClient(m_vault, this);
+    qInfo() << "Account: vault backend" << m_vault->backendName();
 
     connect(m_client, &AccountClient::authenticationLost, this, [this](const QString &code) {
         if (code == QLatin1String("device_revoked") ||
@@ -165,12 +166,14 @@ void LegionApi::initialize()
     m_deviceKey = DeviceKey::load(m_vault, &errorCode);
     if (m_deviceKey != nullptr) {
         m_client->setDeviceKey(m_deviceKey);
+        qInfo() << "Account: device key loaded";
     }
     else if (!errorCode.isEmpty()) {
         qWarning() << "Account: device key unavailable on startup:" << errorCode;
     }
 
     const bool haveRefresh = m_client->restoreRefreshToken();
+    qInfo() << "Account: refresh token restored:" << haveRefresh;
     if (haveRefresh || m_deviceKey != nullptr) {
         signInAfterAuth();
     }
