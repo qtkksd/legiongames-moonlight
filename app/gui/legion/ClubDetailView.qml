@@ -34,11 +34,11 @@ LegionView {
     }
 
     readonly property string updatedAt: {
-        if (club && club.updated_at) {
-            return club.updated_at
-        }
         if (shell && shell.catalogAt) {
             return shell.catalogAt
+        }
+        if (club && club.updated_at) {
+            return club.updated_at
         }
         return catalogUpdatedAt
     }

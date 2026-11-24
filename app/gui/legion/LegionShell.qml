@@ -329,7 +329,9 @@ Item {
             if (op === "clubs") {
                 shell.catalogLoading = false
                 shell.catalog = Api.clubsOf(data)
-                shell.catalogAt = Api.updatedAtOf(data)
+                // Age is measured from the local receipt time, not the server
+                // clock: a small clock skew must not mark fresh data stale.
+                shell.catalogAt = new Date().toISOString()
                 shell.catalogErrorCode = ""
                 shell.catalogErrorMessage = ""
             }
@@ -337,10 +339,7 @@ Item {
                 shell.wallet = Api.walletClubsOf(data)
             }
             else if (op === "club") {
-                var club = Api.clubOf(data)
-                if (club && club.updated_at) {
-                    shell.catalogAt = club.updated_at
-                }
+                shell.catalogAt = new Date().toISOString()
             }
             else if (op === "session_current" || op === "session_start" ||
                      op === "session_stop" || op === "session_reconnect") {

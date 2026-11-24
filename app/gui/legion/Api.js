@@ -655,6 +655,12 @@ function errorText(code, message) {
     case "vault_unavailable":
         text = "Не удалось открыть хранилище ключей. Аккаунт недоступен."
         break
+    case "device_key_corrupt":
+        text = "Ключ устройства повреждён. Сбросьте локальные данные или восстановите доступ."
+        break
+    case "device_key_missing":
+        text = "Ключ устройства не найден. Восстановите доступ по словам."
+        break
     case "server_error":
         text = "Сервер не отвечает. Попробуйте ещё раз."
         break
