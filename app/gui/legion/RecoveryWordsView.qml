@@ -193,14 +193,14 @@ LegionView {
                     wrapMode: Text.Wrap
                 }
 
-                Label {
+                SelectableText {
                     Layout.fillWidth: true
                     visible: recoveryKitPath.length > 0
                     text: recoveryKitPath
                     color: Theme.textDim
                     font.pointSize: Theme.fontSmall + 1
                     font.family: "monospace"
-                    wrapMode: Text.WrapAnywhere
+                    wrapMode: TextEdit.WrapAnywhere
                 }
 
                 RowLayout {

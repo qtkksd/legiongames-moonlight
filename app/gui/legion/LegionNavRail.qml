@@ -114,25 +114,12 @@ Rectangle {
                     tone: (modelData.key === "clubs" && rail.queueReady) ? "accent" : "neutral"
                 }
 
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: 2
-                    radius: Theme.radiusS + 2
-                    color: "transparent"
-                    border.width: 3
-                    border.color: Theme.focus
-                    visible: entry.activeFocus
-                }
-
                 MouseArea {
                     id: entryMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        entry.forceActiveFocus()
-                        rail.navigate(modelData.key)
-                    }
+                    onClicked: rail.navigate(modelData.key)
                 }
 
                 Keys.onUpPressed: rail.moveFocus(index - 1)

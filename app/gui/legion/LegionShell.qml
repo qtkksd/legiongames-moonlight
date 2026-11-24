@@ -454,7 +454,6 @@ Item {
 
             onNavigate: {
                 shell.showSection(key)
-                shell.focusContentArea()
             }
 
             onContentRequested: shell.focusContentArea()

@@ -175,6 +175,9 @@ void LegionApi::initialize()
     const bool haveRefresh = m_client->restoreRefreshToken();
     qInfo() << "Account: refresh token restored:" << haveRefresh;
     if (haveRefresh || m_deviceKey != nullptr) {
+        // Keep the onboarding screen hidden while the stored key/token are
+        // validated. A brief no_account state would look like a lost account.
+        setState(QStringLiteral("checking"));
         signInAfterAuth();
     }
     else {
@@ -799,7 +802,10 @@ void LegionApi::handleAuthFailure(const QString &op, const ApiResult &result, bo
 
     if (silent) {
         silentFailure(result.errorCode, result.message);
-        if (result.errorCode == QLatin1String("not_authenticated")) {
+        if (result.errorCode == QLatin1String("not_authenticated") ||
+            result.errorCode == QLatin1String("invalid_signature") ||
+            result.errorCode == QLatin1String("key_revoked") ||
+            result.errorCode == QLatin1String("invalid_or_expired_challenge")) {
             setState(QStringLiteral("no_account"));
         }
         return;

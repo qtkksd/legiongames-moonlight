@@ -127,13 +127,13 @@ LegionView {
                     RowLayout {
                         Layout.fillWidth: true
 
-                        Label {
+                        SelectableText {
                             Layout.fillWidth: true
                             text: account.handle.length > 0 ? account.handle : qsTr("Аккаунт")
                             color: Theme.text
                             font.pointSize: Theme.fontHero
                             font.bold: true
-                            elide: Text.ElideRight
+                            wrapMode: TextEdit.NoWrap
                         }
 
                         StatusPill {
@@ -241,14 +241,14 @@ LegionView {
                             font.bold: true
                         }
 
-                        Label {
+                        SelectableText {
                             Layout.fillWidth: true
                             visible: account.kitSavedPath.length > 0
                             text: account.kitSavedPath
                             color: Theme.textMuted
                             font.pointSize: Theme.fontSmall
                             font.family: "monospace"
-                            wrapMode: Text.WrapAnywhere
+                            wrapMode: TextEdit.WrapAnywhere
                         }
                     }
 
