@@ -130,6 +130,12 @@ function resetLocalAccount(api) {
     return call0(api, "resetLocalAccount")
 }
 
+// Checks the local NetBird CLI and reports whether it is connected to the
+// management server. Used by the Settings network block.
+function checkNetbirdStatus(api) {
+    return call0(api, "checkNetbirdStatus")
+}
+
 function hasReprintRecoveryKit(api) {
     return has(api, "reprintRecoveryKit")
 }
@@ -194,6 +200,10 @@ function getCurrentSession(api) {
     return call0(api, "getCurrentSession")
 }
 
+function getSessionHistory(api) {
+    return call0(api, "getSessionHistory")
+}
+
 function stopSession(api, id) {
     return call1(api, "stopSession", id)
 }
@@ -228,6 +238,10 @@ function claimQueue(api, id) {
 
 function openExternal(api, url) {
     return call1(api, "openExternal", url)
+}
+
+function openInstallFolder(api) {
+    return call0(api, "openInstallFolder")
 }
 
 function retryFailedStep(api) {
@@ -454,7 +468,9 @@ function traceReason(club, stale, balance) {
     if (Number(club.free_units || 0) <= 0) {
         return "Свободных компьютеров нет. Встаньте в очередь."
     }
-    if (Number(balance || 0) <= 0) {
+    var minutePrice = Number(club.price_per_minute || 0)
+    if (Number(balance || 0) <= 0 ||
+            (minutePrice > 0 && Number(balance || 0) < minutePrice)) {
         return "Недостаточно средств. Пополните баланс."
     }
     return ""

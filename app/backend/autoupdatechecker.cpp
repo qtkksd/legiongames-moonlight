@@ -75,6 +75,8 @@ void AutoUpdateChecker::start()
         return;
     }
 
+    clearUpdateState();
+
 #ifdef LG_STAGING_BUILD
     // A staging build must never pull the production installer over itself.
     qInfo() << "Staging build: update checks disabled";
@@ -157,6 +159,7 @@ void AutoUpdateChecker::handleManifestReply(QNetworkReply *reply)
 
     if (manifest.disabled) {
         qInfo() << "Update manifest is signed and marked disabled; no update offered";
+        clearUpdateState();
         return;
     }
 
@@ -168,11 +171,13 @@ void AutoUpdateChecker::handleManifestReply(QNetworkReply *reply)
         // Signed, but older than this build. Never downgrade.
         qInfo() << "Ignoring older signed manifest: build" << latestBuild
                 << "current" << m_CurrentBuild;
+        clearUpdateState();
         return;
     }
 
     if (latestBuild == m_CurrentBuild && commitsEqual(m_CurrentCommit, latestCommit)) {
         qDebug() << "Moonlight is up to date (build" << m_CurrentBuild << ")";
+        clearUpdateState();
         return;
     }
 
@@ -186,16 +191,21 @@ void AutoUpdateChecker::handleManifestReply(QNetworkReply *reply)
     const QString key = platformAssetKey();
     if (!assets.contains(key)) {
         qInfo() << "Signed manifest has no asset for platform" << key;
+        clearUpdateState();
         return;
     }
 
     m_PendingAsset = assets.value(key);
     m_HasPendingAsset = true;
 
+    m_updateAvailable = true;
+    m_updateVersion = latestVersion.isEmpty() ? latestCommit : latestVersion;
+    m_updateUrl = m_PendingAsset.url;
+    emit updateStateChanged();
+
     qDebug() << "Update available: version" << latestVersion << "build" << latestBuild
              << m_PendingAsset.url;
-    emit onUpdateAvailable(latestVersion.isEmpty() ? latestCommit : latestVersion,
-                           m_PendingAsset.url);
+    emit onUpdateAvailable(m_updateVersion, m_updateUrl);
 }
 
 QString AutoUpdateChecker::randomTempPath()
@@ -224,8 +234,20 @@ QString AutoUpdateChecker::randomTempPath()
 void AutoUpdateChecker::rejectUpdate(const QString &code, const QString &message)
 {
     qWarning() << "Update rejected:" << code << message;
+    clearUpdateState();
     emit onUpdateFailed(code, message.isEmpty() ? UpdateManifestParser::errorMessageFor(code)
                                                 : message);
+}
+
+void AutoUpdateChecker::clearUpdateState()
+{
+    if (!m_updateAvailable && m_updateVersion.isEmpty() && m_updateUrl.isEmpty()) {
+        return;
+    }
+    m_updateAvailable = false;
+    m_updateVersion.clear();
+    m_updateUrl.clear();
+    emit updateStateChanged();
 }
 
 void AutoUpdateChecker::installUpdate(const QString &url)

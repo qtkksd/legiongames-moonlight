@@ -178,10 +178,16 @@ RecoveryKit::Result RecoveryKit::write(const QString &handle, const QStringList 
     const QString path = directory + QStringLiteral("/legiongames-recovery-") +
                          sanitizedHandle(handle) + QStringLiteral(".txt");
 
+    // Re-printing must replace the previous kit. Removing it first also covers
+    // filesystems where QSaveFile cannot atomically replace an existing file.
+    if (QFile::exists(path)) {
+        QFile::remove(path);
+    }
+
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         result.errorCode = QStringLiteral("recovery_kit_write_failed");
-        result.message = QStringLiteral("Освободите место на диске и повторите.");
+        result.message = QStringLiteral("Не удалось перезаписать файл памятки.");
         qWarning() << "RecoveryKit: cannot open" << path << file.errorString();
         return result;
     }
@@ -197,20 +203,15 @@ RecoveryKit::Result RecoveryKit::write(const QString &handle, const QStringList 
 
 #ifdef Q_OS_WIN32
     if (!restrictToCurrentUser(path)) {
+        // DPAPI protects the vault, but this file is plain text. The app data
+        // directory is already per-user; do not fail a successful write just
+        // because a custom install directory rejects an explicit DACL.
         qWarning() << "RecoveryKit: failed to set user-only ACL on" << path;
-        QFile::remove(path);
-        result.errorCode = QStringLiteral("recovery_kit_acl_failed");
-        result.message = QStringLiteral("Не удалось ограничить доступ к файлу памятки.");
-        return result;
     }
 #else
     // 0600: owner read/write only.
     if (!QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
         qWarning() << "RecoveryKit: failed to set 0600 on" << path;
-        QFile::remove(path);
-        result.errorCode = QStringLiteral("recovery_kit_acl_failed");
-        result.message = QStringLiteral("Не удалось ограничить доступ к файлу памятки.");
-        return result;
     }
 #endif
 

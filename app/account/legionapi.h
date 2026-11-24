@@ -13,6 +13,7 @@
 
 class AccountClient;
 class DeviceKey;
+class QProcess;
 class QTimer;
 class Vault;
 struct ApiResult;
@@ -41,6 +42,7 @@ class LegionApi : public QObject
     Q_PROPERTY(QString ageNotice READ ageNotice NOTIFY legalDocumentsChanged)
     Q_PROPERTY(QString installPath READ installPath CONSTANT)
     Q_PROPERTY(QString recoveryKitPath READ recoveryKitPath NOTIFY recoveryKitPathChanged)
+    Q_PROPERTY(QString netbirdStatus READ netbirdStatus NOTIFY netbirdStatusChanged)
 
 public:
     explicit LegionApi(QObject *parent = nullptr);
@@ -60,6 +62,7 @@ public:
     QString ageNotice() const { return m_ageNotice; }
     QString installPath() const;
     QString recoveryKitPath() const;
+    QString netbirdStatus() const { return m_netbirdStatus; }
 
     Q_INVOKABLE void initialize();
 
@@ -76,6 +79,7 @@ public:
     Q_INVOKABLE void refreshMe();
     Q_INVOKABLE void reprintRecoveryKit();
     Q_INVOKABLE void resetLocalAccount();
+    Q_INVOKABLE void checkNetbirdStatus();
     Q_INVOKABLE void deleteAccount(const QString &handle, const QStringList &words);
 
     Q_INVOKABLE void getLegalDocuments();
@@ -90,6 +94,7 @@ public:
 
     Q_INVOKABLE void startSession(int clubId);
     Q_INVOKABLE void getCurrentSession();
+    Q_INVOKABLE void getSessionHistory();
     Q_INVOKABLE void stopSession(const QString &id);
     Q_INVOKABLE void extendSession(const QString &id, const QString &amount);
     Q_INVOKABLE void reconnectSession(const QString &id);
@@ -100,6 +105,7 @@ public:
     Q_INVOKABLE void claimQueue(const QString &id);
 
     Q_INVOKABLE void openExternal(const QString &url);
+    Q_INVOKABLE void openInstallFolder();
     Q_INVOKABLE void openLogFolder();
     Q_INVOKABLE void retryFailedStep();
 
@@ -119,6 +125,7 @@ signals:
     void legalDocumentsChanged();
     void wordsChanged();
     void recoveryKitPathChanged();
+    void netbirdStatusChanged();
     void wordsReady(const QString &handle, const QStringList &words);
     void consentRequired();
     void paymentReturned(const QString &publicId);
@@ -211,6 +218,8 @@ private:
     QString m_pendingRecoveryHandle;
     QStringList m_pendingRecoveryWords;
     QString m_recoveryKitPath;
+    QString m_netbirdStatus = QStringLiteral("unknown");
+    QProcess *m_netbirdProcess = nullptr;
 
     QString m_pollPublicId;
     int m_pollCount = 0;

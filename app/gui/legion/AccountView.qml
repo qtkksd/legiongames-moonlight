@@ -15,6 +15,8 @@ LegionView {
 
     readonly property bool deletionAvailable: Api.hasDeleteAccount(api)
     readonly property bool reprintAvailable: Api.hasReprintRecoveryKit(api)
+    property bool kitSaved: false
+    property string kitSavedPath: ""
     // `device` is a notifyable backend property: read it in the binding so the
     // card updates when the label or version changes.
     readonly property var device: (api && api.device) ? api.device : null
@@ -28,6 +30,7 @@ LegionView {
         if (shell) {
             shell.refreshWallet()
         }
+        kitSaved = false
         clearError()
     }
 
@@ -36,11 +39,13 @@ LegionView {
     }
 
     function reissueKit() {
+        kitSaved = false
         clearError()
         Api.reissueWords(api)
     }
 
     function reprintKit() {
+        kitSaved = false
         clearError()
         Api.reprintRecoveryKit(api)
     }
@@ -67,7 +72,15 @@ LegionView {
         ignoreUnknownSignals: true
 
         function onFailed(op, code, message) {
+            if (op === "kit" || op === "reissue_words") {
+                account.kitSaved = false
+            }
             account.showError(code, message, op)
+        }
+
+        function onRecoveryKitWritten(path, syncedFolder) {
+            account.kitSaved = true
+            account.kitSavedPath = path ? String(path) : ""
         }
     }
 
@@ -191,6 +204,60 @@ LegionView {
                 detail: account.serverError
                 canRetry: true
                 onRetry: account.activate()
+            }
+
+            Rectangle {
+                width: parent.width
+                visible: account.kitSaved
+                height: visible ? savedLayout.implicitHeight + Theme.spaceM * 2 : 0
+                radius: Theme.radiusS
+                color: "#142214"
+                border.width: 1
+                border.color: Theme.success
+
+                RowLayout {
+                    id: savedLayout
+                    anchors.fill: parent
+                    anchors.margins: Theme.spaceM
+                    spacing: Theme.spaceM
+
+                    Label {
+                        text: "✓"
+                        color: Theme.success
+                        font.pointSize: Theme.fontSubtitle
+                        font.bold: true
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("Файл набора сохранён")
+                            color: Theme.success
+                            font.pointSize: Theme.fontBody
+                            font.bold: true
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            visible: account.kitSavedPath.length > 0
+                            text: account.kitSavedPath
+                            color: Theme.textMuted
+                            font.pointSize: Theme.fontSmall
+                            font.family: "monospace"
+                            wrapMode: Text.WrapAnywhere
+                        }
+                    }
+
+                    LegionButton {
+                        kind: "ghost"
+                        compact: true
+                        text: qsTr("Закрыть")
+                        onClicked: account.kitSaved = false
+                    }
+                }
             }
 
             NeonFrame {

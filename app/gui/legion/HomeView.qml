@@ -2,6 +2,8 @@ import QtQuick 2.9
 import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 
+import AutoUpdateChecker 1.0
+
 import "Api.js" as Api
 import "Theme.js" as Theme
 import ".."
@@ -35,9 +37,7 @@ LegionView {
             shell.refreshSession()
             shell.refreshQueue()
             shell.refreshWallet()
-            if (shell.catalog.length === 0) {
-                shell.loadCatalog(false)
-            }
+            shell.loadCatalog(false)
         }
         syncSession()
     }
@@ -118,6 +118,46 @@ LegionView {
             id: body
             width: parent.width
             spacing: Theme.spaceL
+
+            // ---- update notice ------------------------------------------
+            NeonFrame {
+                width: parent.width
+                visible: AutoUpdateChecker.updateAvailable
+                height: updateNotice.implicitHeight + Theme.spaceXl * 2
+                highlighted: true
+
+                ColumnLayout {
+                    id: updateNotice
+                    anchors.fill: parent
+                    anchors.margins: Theme.spaceXl
+                    spacing: Theme.spaceS
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Доступно обновление")
+                        color: Theme.text
+                        font.pointSize: Theme.fontTitle
+                        font.bold: true
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: AutoUpdateChecker.updateVersion.length > 0
+                              ? qsTr("Версия %1 уже готова к установке.")
+                                    .arg(AutoUpdateChecker.updateVersion)
+                              : qsTr("Новая версия уже готова к установке.")
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontBody
+                        wrapMode: Text.Wrap
+                    }
+
+                    LegionButton {
+                        kind: "primary"
+                        text: qsTr("Скачать обновление")
+                        onClicked: AutoUpdateChecker.installUpdate(AutoUpdateChecker.updateUrl)
+                    }
+                }
+            }
 
             // ---- primary panel ------------------------------------------
             NeonFrame {
@@ -302,10 +342,17 @@ LegionView {
                                             id: clubAction
                                             readonly property real clubBalance:
                                                 Api.balanceFor(home.wallet, modelData.id)
-                                            readonly property real clubPrice:
-                                                Number(modelData.price_per_hour || 0)
+                                            readonly property real clubMinutePrice: {
+                                                var minute = Number(modelData.price_per_minute || 0)
+                                                if (minute > 0) {
+                                                    return minute
+                                                }
+                                                return Number(modelData.price_per_hour || 0) / 60
+                                            }
                                             readonly property bool enough:
-                                                clubPrice <= 0 || clubBalance >= clubPrice
+                                                clubBalance > 0 &&
+                                                (clubMinutePrice <= 0 ||
+                                                 clubBalance >= clubMinutePrice)
 
                                             compact: true
                                             kind: enough ? "primary" : "secondary"

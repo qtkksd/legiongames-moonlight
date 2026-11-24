@@ -46,10 +46,12 @@ Rectangle {
             id: navItems
             model: [
                 { key: "home", title: qsTr("Главная") },
+                { key: "sessions", title: qsTr("Сессии") },
                 { key: "clubs", title: qsTr("Клубы") },
                 { key: "wallet", title: qsTr("Кошелёк") },
                 { key: "account", title: qsTr("Аккаунт") },
-                { key: "settings", title: qsTr("Настройки") }
+                { key: "settings", title: qsTr("Настройки") },
+                { key: "stream", title: qsTr("Трансляция") }
             ]
 
             delegate: Item {

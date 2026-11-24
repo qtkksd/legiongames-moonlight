@@ -210,9 +210,32 @@ LegionView {
 
             Label {
                 width: parent.width
-                text: qsTr("Возврат — через поддержку.")
-                color: Theme.textDim
-                font.pointSize: Theme.fontSmall
+                text: qsTr("Возврат оформляет поддержка. Напишите в Telegram-бот или на почту.")
+                color: Theme.textMuted
+                font.pointSize: Theme.fontBody + 2
+                wrapMode: Text.Wrap
+            }
+
+            Row {
+                spacing: Theme.spaceXl
+
+                Text {
+                    text: '<a href="https://t.me/legiongamebot">Telegram-бот</a>'
+                    textFormat: Text.RichText
+                    color: Theme.textMuted
+                    linkColor: Theme.accent
+                    font.pointSize: Theme.fontBody + 2
+                    onLinkActivated: wallet.openUrl(link)
+                }
+
+                Text {
+                    text: '<a href="mailto:support@legiongames.ru">support@legiongames.ru</a>'
+                    textFormat: Text.RichText
+                    color: Theme.textMuted
+                    linkColor: Theme.accent
+                    font.pointSize: Theme.fontBody + 2
+                    onLinkActivated: wallet.openUrl(link)
+                }
             }
         }
     }

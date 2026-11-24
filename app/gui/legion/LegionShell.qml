@@ -123,6 +123,9 @@ Item {
         if (key === "clubs") {
             setPage("qrc:/gui/legion/ClubsView.qml", {})
         }
+        else if (key === "sessions") {
+            setPage("qrc:/gui/legion/SessionsView.qml", {})
+        }
         else if (key === "wallet") {
             setPage("qrc:/gui/legion/WalletView.qml", {})
         }
@@ -131,6 +134,9 @@ Item {
         }
         else if (key === "settings") {
             setPage("qrc:/gui/legion/LegionSettingsView.qml", {})
+        }
+        else if (key === "stream") {
+            setPage("qrc:/gui/legion/StreamSettingsView.qml", {})
         }
         else {
             section = "home"
@@ -344,13 +350,22 @@ Item {
             else if (op === "session_current" || op === "session_start" ||
                      op === "session_stop" || op === "session_reconnect") {
                 shell.session = Api.sessionOf(data)
+                if (op !== "session_current") {
+                    shell.loadCatalog(false)
+                    shell.refreshWallet()
+                }
             }
             else if (op === "queue" || op === "queue_join" || op === "queue_leave") {
                 shell.queueEntry = Api.entryOf(data)
+                if (op !== "queue") {
+                    shell.loadCatalog(false)
+                }
             }
             else if (op === "queue_claim") {
                 shell.queueEntry = null
                 shell.session = Api.sessionOf(data)
+                shell.loadCatalog(false)
+                shell.refreshWallet()
             }
         }
 

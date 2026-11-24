@@ -47,10 +47,15 @@ LegionView {
     readonly property bool open: Api.isClubOpen(club)
     readonly property int freeUnits: club ? Number(club.free_units || 0) : 0
     readonly property var balance: shell ? shell.balanceFor(clubId) : 0
-    readonly property bool hasFunds: Number(balance) > 0
-    readonly property bool canPlay: open && freeUnits > 0 && !stale && hasFunds &&
+    readonly property real money: Number(balance || 0)
+    readonly property real minutePrice: club ? Number(club.price_per_minute || 0) : 0
+    readonly property bool enoughForMinute: money > 0 &&
+                                            (minutePrice <= 0 || money >= minutePrice)
+    readonly property bool hasFunds: money > 0
+    readonly property bool canPlay: open && freeUnits > 0 && !stale && enoughForMinute &&
                                     !starting && !serverBusy
-    readonly property bool canQueue: open && !stale && hasFunds && !joining && !serverBusy
+    readonly property bool canQueue: open && freeUnits <= 0 && !stale && hasFunds &&
+                                     !joining && !serverBusy
     readonly property string blockedReason: club ? Api.traceReason(club, stale, balance) : ""
 
     function activate() {
@@ -363,22 +368,48 @@ LegionView {
 
                     LegionButton {
                         id: playButton
-                        kind: detail.canPlay ? "primary" : "secondary"
-                        enabled: detail.canPlay
-                        focus: detail.canPlay
-                        text: detail.starting ? qsTr("Запускаем…") : qsTr("Играть")
-                        onClicked: detail.startSession()
+                        kind: "primary"
+                        enabled: detail.canPlay || detail.canQueue
+                        focus: detail.canPlay || detail.canQueue
+                        text: {
+                            if (detail.freeUnits > 0) {
+                                if (detail.starting) {
+                                    return qsTr("Запускаем…")
+                                }
+                                return detail.enoughForMinute ? qsTr("Играть")
+                                                              : qsTr("Пополнить")
+                            }
+                            if (detail.joining) {
+                                return qsTr("Встаём в очередь…")
+                            }
+                            return detail.hasFunds ? qsTr("В очередь") : qsTr("Пополнить")
+                        }
+                        onClicked: {
+                            if (detail.freeUnits > 0) {
+                                if (detail.enoughForMinute) {
+                                    detail.startSession()
+                                }
+                                else {
+                                    detail.go("qrc:/gui/legion/PaymentView.qml",
+                                              { clubId: detail.clubId,
+                                                clubName: detail.clubName })
+                                }
+                            }
+                            else if (detail.hasFunds) {
+                                detail.joinQueue()
+                            }
+                            else {
+                                detail.go("qrc:/gui/legion/PaymentView.qml",
+                                          { clubId: detail.clubId,
+                                            clubName: detail.clubName })
+                            }
+                        }
                     }
 
                     LegionButton {
                         kind: "secondary"
-                        enabled: detail.canQueue && detail.freeUnits <= 0
-                        text: detail.joining ? qsTr("Встаём в очередь…") : qsTr("В очередь")
-                        onClicked: detail.joinQueue()
-                    }
-
-                    LegionButton {
-                        kind: detail.hasFunds ? "secondary" : "primary"
+                        visible: detail.freeUnits > 0 ? detail.enoughForMinute
+                                                      : detail.hasFunds
                         text: qsTr("Пополнить")
                         onClicked: detail.go("qrc:/gui/legion/PaymentView.qml",
                                              { clubId: detail.clubId, clubName: detail.clubName })

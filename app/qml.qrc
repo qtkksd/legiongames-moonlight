@@ -37,6 +37,7 @@
         <file>gui/legion/RecoveryWordsView.qml</file>
         <file>gui/legion/RecoveryView.qml</file>
         <file>gui/legion/HomeView.qml</file>
+        <file>gui/legion/SessionsView.qml</file>
         <file>gui/legion/ClubsView.qml</file>
         <file>gui/legion/ClubDetailView.qml</file>
         <file>gui/legion/SessionView.qml</file>
@@ -45,5 +46,6 @@
         <file>gui/legion/PaymentView.qml</file>
         <file>gui/legion/AccountView.qml</file>
         <file>gui/legion/LegionSettingsView.qml</file>
+        <file>gui/legion/StreamSettingsView.qml</file>
     </qresource>
 </RCC>

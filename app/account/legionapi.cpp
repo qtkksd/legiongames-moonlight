@@ -11,9 +11,13 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonValue>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QStandardPaths>
 #include <QSysInfo>
 #include <QTimer>
 #include <QUrl>
@@ -25,6 +29,35 @@ const char kAccountVaultKey[] = "account";
 const char kWordsVaultKey[] = "recovery.words";
 const char kConsentVaultKey[] = "consent";
 const char kPendingIntentVaultKey[] = "payment.pending";
+
+QString findNetbirdExecutable()
+{
+    QString exe = QStandardPaths::findExecutable(QStringLiteral("netbird"));
+    if (!exe.isEmpty()) {
+        return exe;
+    }
+#ifdef Q_OS_WIN32
+    const QString candidate =
+        qEnvironmentVariable("ProgramFiles") + QStringLiteral("/NetBird/netbird.exe");
+    if (QFileInfo::exists(candidate)) {
+        return candidate;
+    }
+#elif defined(Q_OS_MACOS)
+    const QString candidate =
+        QStringLiteral("/Applications/NetBird.app/Contents/MacOS/netbird");
+    if (QFileInfo::exists(candidate)) {
+        return candidate;
+    }
+#else
+    for (const QString &candidate : {QStringLiteral("/usr/bin/netbird"),
+                                     QStringLiteral("/usr/local/bin/netbird")}) {
+        if (QFileInfo::exists(candidate)) {
+            return candidate;
+        }
+    }
+#endif
+    return QString();
+}
 
 const int kMaxIntentPolls = 80;
 
@@ -1418,6 +1451,63 @@ void LegionApi::reprintRecoveryKit()
     writeRecoveryKit(words);
 }
 
+void LegionApi::checkNetbirdStatus()
+{
+    if (m_netbirdProcess != nullptr) {
+        return;
+    }
+
+    const QString exe = findNetbirdExecutable();
+    if (exe.isEmpty()) {
+        if (m_netbirdStatus != QLatin1String("missing")) {
+            m_netbirdStatus = QStringLiteral("missing");
+            emit netbirdStatusChanged();
+        }
+        return;
+    }
+
+    QProcess *process = new QProcess(this);
+    m_netbirdProcess = process;
+
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, process](int exitCode, QProcess::ExitStatus status) {
+                if (m_netbirdProcess != process) {
+                    return;
+                }
+                QString text = QString::fromUtf8(process->readAllStandardOutput() +
+                                                 process->readAllStandardError());
+                QString compact = text;
+                compact.remove(QRegularExpression(QStringLiteral("\\s+")));
+                const bool online =
+                    status == QProcess::NormalExit && exitCode == 0 &&
+                    (compact.contains(QStringLiteral("\"connected\":true")) ||
+                     compact.contains(QStringLiteral("Management:Connected")));
+                const QString next = online ? QStringLiteral("online")
+                                            : QStringLiteral("offline");
+                if (m_netbirdStatus != next) {
+                    m_netbirdStatus = next;
+                    emit netbirdStatusChanged();
+                }
+                m_netbirdProcess = nullptr;
+                process->deleteLater();
+            });
+
+    connect(process, &QProcess::errorOccurred, this,
+            [this, process](QProcess::ProcessError) {
+                if (m_netbirdProcess != process) {
+                    return;
+                }
+                if (m_netbirdStatus != QLatin1String("offline")) {
+                    m_netbirdStatus = QStringLiteral("offline");
+                    emit netbirdStatusChanged();
+                }
+                m_netbirdProcess = nullptr;
+                process->deleteLater();
+            });
+
+    process->start(exe, {QStringLiteral("status"), QStringLiteral("--json")});
+}
+
 void LegionApi::resetLocalAccount()
 {
     if (m_client != nullptr) {
@@ -1985,6 +2075,24 @@ void LegionApi::getCurrentSession()
                   });
 }
 
+void LegionApi::getSessionHistory()
+{
+    if (!ensureAccount(QStringLiteral("session_history"))) {
+        return;
+    }
+
+    m_client->get(QStringLiteral("/sessions/history"), true, CryptoUtil::randomUuid(),
+                  [this](const ApiResult &result) {
+                      if (!result.ok) {
+                          failFromResult(QStringLiteral("session_history"), result,
+                                         [this]() { getSessionHistory(); });
+                          return;
+                      }
+                      emit response(QStringLiteral("session_history"),
+                                    result.json.toVariantMap());
+                  });
+}
+
 void LegionApi::stopSession(const QString &id)
 {
     if (!ensureAccount(QStringLiteral("session_stop"))) {
@@ -2201,16 +2309,28 @@ void LegionApi::openExternal(const QString &url)
 {
     const QUrl parsed(url.trimmed(), QUrl::StrictMode);
     const QString scheme = parsed.scheme().toLower();
+    const bool isWeb = scheme == QLatin1String("https") ||
+                       scheme == QLatin1String("legiongames");
+    const bool isMail = scheme == QLatin1String("mailto") && !parsed.path().isEmpty();
 
-    if (!parsed.isValid() ||
-        (scheme != QLatin1String("https") && scheme != QLatin1String("legiongames")) ||
-        parsed.host().isEmpty()) {
+    if (!parsed.isValid() || (!isWeb && !isMail) ||
+        (isWeb && parsed.host().isEmpty())) {
         fail(QStringLiteral("open_external"), QStringLiteral("invalid_url"),
              QStringLiteral("Ссылка не поддерживается."));
         return;
     }
 
     QDesktopServices::openUrl(parsed);
+}
+
+void LegionApi::openInstallFolder()
+{
+    const QString dir = QCoreApplication::applicationDirPath();
+    if (dir.isEmpty() || !QDesktopServices::openUrl(QUrl::fromLocalFile(dir))) {
+        fail(QStringLiteral("open_install"),
+             QStringLiteral("open_failed"),
+             QStringLiteral("Не удалось открыть папку приложения."));
+    }
 }
 
 void LegionApi::openLogFolder()

@@ -3,6 +3,7 @@ import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 
 import SystemProperties 1.0
+import AutoUpdateChecker 1.0
 
 import "Api.js" as Api
 import "Theme.js" as Theme
@@ -46,16 +47,47 @@ LegionView {
 
     readonly property bool offline: appState === "offline" || lastErrorCode === "offline"
     readonly property bool updateRequired: lastErrorCode === "client_update_required"
+    readonly property bool updateAvailable: AutoUpdateChecker.updateAvailable
+    readonly property string updateVersion: AutoUpdateChecker.updateVersion
+    readonly property string updateUrl: AutoUpdateChecker.updateUrl
+    readonly property string netbirdLabel: {
+        if (netbirdStatus === "online") {
+            return qsTr("NetBird — онлайн")
+        }
+        if (netbirdStatus === "missing") {
+            return qsTr("NetBird — не найден")
+        }
+        if (netbirdStatus === "offline") {
+            return qsTr("NetBird — офлайн")
+        }
+        return qsTr("NetBird — проверка")
+    }
+    readonly property string netbirdTone: {
+        if (netbirdStatus === "online") {
+            return "good"
+        }
+        if (netbirdStatus === "offline" || netbirdStatus === "missing") {
+            return "bad"
+        }
+        return "neutral"
+    }
 
     function activate() {
+        Api.checkNetbirdStatus(api)
         clearError()
     }
 
     function focusFirst() {
-        updateButton.forceActiveFocus()
+        if (updateButton.visible) {
+            updateButton.forceActiveFocus()
+        }
+        else {
+            connectionButton.forceActiveFocus()
+        }
     }
 
     function checkConnection() {
+        Api.checkNetbirdStatus(api)
         Api.retryFailedStep(api)
         if (shell) {
             shell.loadCatalog(false)
@@ -146,6 +178,15 @@ LegionView {
                         wrapMode: Text.Wrap
                     }
 
+                    Label {
+                        Layout.fillWidth: true
+                        visible: !settings.updateAvailable
+                        text: qsTr("Установлена последняя версия или обновлений сейчас нет.")
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontSmall
+                        wrapMode: Text.Wrap
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.spaceM
@@ -153,20 +194,11 @@ LegionView {
                         LegionButton {
                             id: updateButton
                             kind: "primary"
-                            text: qsTr("Скачать обновление")
-                            onClicked: settings.openUrl("https://legiongames.ru/download/")
-                        }
-
-                        LegionButton {
-                            kind: "secondary"
-                            text: qsTr("Настройки трансляции")
-                            onClicked: {
-                                try {
-                                    window.navigateTo("qrc:/gui/SettingsView.qml", SettingsView)
-                                }
-                                catch (error) {
-                                }
-                            }
+                            visible: settings.updateAvailable
+                            text: settings.updateVersion.length > 0
+                                  ? qsTr("Скачать обновление %1").arg(settings.updateVersion)
+                                  : qsTr("Скачать обновление")
+                            onClicked: AutoUpdateChecker.installUpdate(settings.updateUrl)
                         }
 
                         Item { Layout.fillWidth: true }
@@ -214,7 +246,7 @@ LegionView {
                         LegionButton {
                             kind: "secondary"
                             text: qsTr("Открыть папку приложения")
-                            onClicked: settings.openUrl("file:///" + settings.appFolder)
+                            onClicked: Api.openInstallFolder(settings.api)
                         }
 
                         LegionButton {
@@ -264,8 +296,14 @@ LegionView {
                         }
 
                         StatusPill {
-                            text: settings.offline ? qsTr("Нет соединения") : qsTr("Онлайн")
+                            text: settings.offline ? qsTr("LegionGames — офлайн")
+                                                   : qsTr("LegionGames — онлайн")
                             tone: settings.offline ? "bad" : "good"
+                        }
+
+                        StatusPill {
+                            text: settings.netbirdLabel
+                            tone: settings.netbirdTone
                         }
                     }
 
@@ -283,6 +321,7 @@ LegionView {
                         spacing: Theme.spaceM
 
                         LegionButton {
+                            id: connectionButton
                             kind: "secondary"
                             text: qsTr("Проверить соединение")
                             onClicked: settings.checkConnection()
@@ -394,8 +433,14 @@ LegionView {
 
                         LegionButton {
                             kind: "secondary"
-                            text: qsTr("Поддержка")
-                            onClicked: settings.openUrl("https://legiongames.ru/help/")
+                            text: qsTr("Telegram-бот")
+                            onClicked: settings.openUrl("https://t.me/legiongamebot")
+                        }
+
+                        LegionButton {
+                            kind: "secondary"
+                            text: qsTr("support@legiongames.ru")
+                            onClicked: settings.openUrl("mailto:support@legiongames.ru")
                         }
 
                         Item { Layout.fillWidth: true }
@@ -434,6 +479,22 @@ LegionView {
                         Layout.fillWidth: true
                         text: qsTr("Клиент основан на Moonlight (GPLv3). Один аккаунт — один ПК. " +
                                    "Сервис предназначен для лиц старше 18 лет.")
+                        color: Theme.textDim
+                        font.pointSize: Theme.fontSmall
+                        wrapMode: Text.Wrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("ИП Адигамов Р.А., ИНН: 772307873972, ОГРНИП: 325774600216705")
+                        color: Theme.textDim
+                        font.pointSize: Theme.fontSmall
+                        wrapMode: Text.Wrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Адрес: г. Москва, ул. Перерва, д. 39, кв. 196")
                         color: Theme.textDim
                         font.pointSize: Theme.fontSmall
                         wrapMode: Text.Wrap

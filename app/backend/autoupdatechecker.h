@@ -11,10 +11,18 @@ class QNetworkReply;
 class AutoUpdateChecker : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(bool updateAvailable READ updateAvailable NOTIFY updateStateChanged)
+    Q_PROPERTY(QString updateVersion READ updateVersion NOTIFY updateStateChanged)
+    Q_PROPERTY(QString updateUrl READ updateUrl NOTIFY updateStateChanged)
+
 public:
     explicit AutoUpdateChecker(QObject *parent = nullptr);
 
     Q_INVOKABLE void start();
+
+    bool updateAvailable() const { return m_updateAvailable; }
+    QString updateVersion() const { return m_updateVersion; }
+    QString updateUrl() const { return m_updateUrl; }
 
     // Downloads, verifies and launches the installer on Windows, or replaces
     // the running AppImage on Linux. Other platforms open the download page.
@@ -31,11 +39,13 @@ public:
 signals:
     void onUpdateAvailable(QString newVersion, QString url);
     void onUpdateFailed(QString code, QString message);
+    void updateStateChanged();
 
 private:
     void handleManifestReply(QNetworkReply *reply);
     void downloadVerifiedAsset(const UpdateAsset &asset);
     void rejectUpdate(const QString &code, const QString &message);
+    void clearUpdateState();
 
     static bool commitsEqual(const QString &a, const QString &b);
     static QString platformAssetKey();
@@ -48,4 +58,7 @@ private:
     UpdateAsset m_PendingAsset;
     bool m_HasPendingAsset = false;
     bool m_UpdatesDisabled = false;
+    bool m_updateAvailable = false;
+    QString m_updateVersion;
+    QString m_updateUrl;
 };
