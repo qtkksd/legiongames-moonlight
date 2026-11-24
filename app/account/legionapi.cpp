@@ -1100,7 +1100,9 @@ void LegionApi::confirmWordsSaved()
     setBusy(true);
     clearError();
 
-    m_client->post(QStringLiteral("/auth/recovery/confirm"), QJsonObject(), true,
+    QJsonObject confirmBody;
+    confirmBody.insert(QStringLiteral("saved"), true);
+    m_client->post(QStringLiteral("/auth/recovery/confirm"), confirmBody, true,
                    CryptoUtil::randomUuid(), [this](const ApiResult &result) {
                        if (!result.ok) {
                            failFromResult(QStringLiteral("confirm_words"), result,

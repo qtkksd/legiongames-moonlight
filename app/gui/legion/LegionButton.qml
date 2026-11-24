@@ -59,7 +59,7 @@ Button {
             }
             return control.hovered ? Theme.panelHover : Theme.panelAlt
         }
-        border.width: 1
+        border.width: control.kind === "primary" ? 0 : 1
         border.color: {
             if (control.kind === "primary") {
                 return Theme.accent
@@ -74,7 +74,8 @@ Button {
         }
     }
 
-    // Visible focus ring for keyboard and controller navigation.
+    // Visible focus ring for keyboard and controller navigation. Mouse clicks
+    // do not produce a ring, so a filled primary button keeps a clean edge.
     Rectangle {
         anchors.fill: parent
         anchors.margins: -3
@@ -82,6 +83,6 @@ Button {
         color: "transparent"
         border.width: 3
         border.color: Theme.focus
-        visible: control.activeFocus
+        visible: control.visualFocus
     }
 }

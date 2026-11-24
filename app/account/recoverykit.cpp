@@ -1,5 +1,6 @@
 #include "recoverykit.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -57,11 +58,20 @@ bool restrictToCurrentUser(const QString &path)
 
 QString RecoveryKit::defaultDirectory()
 {
-    QString documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    if (documents.isEmpty()) {
-        documents = QDir::homePath() + QStringLiteral("/Documents");
+    // Prefer the installation directory when it is writable (portable/custom
+    // installs). Program Files is read-only for a normal user, so fall back to
+    // the per-user application data directory instead of Documents, which is
+    // often synced to a cloud drive.
+    const QString appDir = QCoreApplication::applicationDirPath();
+    if (!appDir.isEmpty() && QFileInfo(appDir).isWritable()) {
+        return appDir;
     }
-    return documents + QStringLiteral("/LegionGames");
+
+    QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (base.isEmpty()) {
+        base = QDir::homePath() + QStringLiteral("/.legiongames");
+    }
+    return base + QStringLiteral("/recovery");
 }
 
 QString RecoveryKit::suggestedPath(const QString &handle)

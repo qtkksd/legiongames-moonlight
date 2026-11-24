@@ -191,18 +191,9 @@ LegionView {
                         if (shell && shell.kitPath.length > 0) {
                             return qsTr("Файл с набором сохранён: %1").arg(shell.kitPath)
                         }
-                        return qsTr("Файл с набором сохранён в папке «Документы/LegionGames».")
+                        return qsTr("Файл с набором сохранён на этом компьютере.")
                     }
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontSmall + 2
-                    wrapMode: Text.Wrap
-                }
-
-                Label {
-                    Layout.fillWidth: true
-                    visible: shell ? shell.kitInSyncedFolder : false
-                    text: qsTr("Эта папка синхронизируется с облаком. Храните набор отдельно от компьютера.")
-                    color: Theme.warning
                     font.pointSize: Theme.fontSmall + 2
                     wrapMode: Text.Wrap
                 }
