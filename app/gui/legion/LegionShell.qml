@@ -336,6 +336,12 @@ Item {
             else if (op === "wallet") {
                 shell.wallet = Api.walletClubsOf(data)
             }
+            else if (op === "club") {
+                var club = Api.clubOf(data)
+                if (club && club.updated_at) {
+                    shell.catalogAt = club.updated_at
+                }
+            }
             else if (op === "session_current" || op === "session_start" ||
                      op === "session_stop" || op === "session_reconnect") {
                 shell.session = Api.sessionOf(data)

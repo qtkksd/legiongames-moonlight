@@ -309,6 +309,14 @@ LegionView {
                     onRetry: onboarding.submit()
                 }
 
+                LegionButton {
+                    Layout.fillWidth: true
+                    visible: onboarding.errorCode === "device_key_corrupt"
+                    kind: "secondary"
+                    text: qsTr("Сбросить локальные данные")
+                    onClicked: Api.resetLocalAccount(onboarding.api)
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Theme.spaceM

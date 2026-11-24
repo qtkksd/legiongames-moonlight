@@ -185,8 +185,13 @@ bool LegionApi::ensureDeviceKey(const QString &op, bool create)
     QString errorCode;
     if (create) {
         bool created = false;
+        // A corrupt key may be replaced when there is no local account, or when
+        // the app is already on the no-account screen: otherwise the user is
+        // trapped between "create account" and the unreadable blob.
+        const bool allowReplaceCorrupt =
+            m_handle.isEmpty() || m_state == QLatin1String("no_account");
         m_deviceKey = DeviceKey::loadOrCreate(m_vault, &created, &errorCode,
-                                               m_handle.isEmpty());
+                                               allowReplaceCorrupt);
         if (created) {
             qInfo() << "Account: generated a new P-256 device key";
         }
@@ -347,6 +352,17 @@ void LegionApi::persistAccount()
 QString LegionApi::installPath() const
 {
     return QDir::toNativeSeparators(QCoreApplication::applicationDirPath());
+}
+
+QString LegionApi::recoveryKitPath() const
+{
+    if (!m_recoveryKitPath.isEmpty()) {
+        return m_recoveryKitPath;
+    }
+    if (!m_handle.isEmpty()) {
+        return QDir::toNativeSeparators(RecoveryKit::suggestedPath(m_handle));
+    }
+    return QString();
 }
 
 void LegionApi::setHandle(const QString &handle)
@@ -558,6 +574,8 @@ void LegionApi::writeRecoveryKit(const QStringList &words)
         return;
     }
 
+    m_recoveryKitPath = QDir::toNativeSeparators(kit.path);
+    emit recoveryKitPathChanged();
     emit recoveryKitWritten(kit.path, kit.syncedFolder);
 }
 
@@ -1087,6 +1105,8 @@ void LegionApi::logout()
     setOnboardingStep(QString());
     m_words.clear();
     emit wordsChanged();
+    m_recoveryKitPath.clear();
+    emit recoveryKitPathChanged();
     setBusy(false);
     setState(QStringLiteral("no_account"));
 }
@@ -1396,6 +1416,46 @@ void LegionApi::reprintRecoveryKit()
     }
 
     writeRecoveryKit(words);
+}
+
+void LegionApi::resetLocalAccount()
+{
+    if (m_client != nullptr) {
+        m_client->clearTokens();
+        m_client->setDeviceKey(nullptr);
+    }
+
+    delete m_deviceKey;
+    m_deviceKey = nullptr;
+
+    if (m_vault != nullptr && m_vault->isAvailable()) {
+        m_vault->remove(DeviceKey::vaultKey());
+        m_vault->remove(QString::fromLatin1(kAccountVaultKey));
+        m_vault->remove(QString::fromLatin1(kWordsVaultKey));
+        m_vault->remove(QString::fromLatin1(kConsentVaultKey));
+        m_vault->remove(QString::fromLatin1(kPendingIntentVaultKey));
+    }
+
+    if (m_pollTimer != nullptr) {
+        m_pollTimer->stop();
+    }
+    m_pollPublicId.clear();
+    m_pendingPaymentId.clear();
+    m_pendingRecoveryTicket.clear();
+    m_pendingRecoveryHandle.clear();
+    m_pendingRecoveryWords.clear();
+
+    m_words.clear();
+    emit wordsChanged();
+    m_recoveryKitPath.clear();
+    emit recoveryKitPathChanged();
+
+    setHandle(QString());
+    setOnboardingStep(QString());
+    clearError();
+    setBusy(false);
+    setState(QStringLiteral("no_account"));
+    emit response(QStringLiteral("local_reset"), QVariantMap());
 }
 
 void LegionApi::deleteAccount(const QString &handle, const QStringList &words)

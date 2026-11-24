@@ -37,6 +37,7 @@ Item {
     readonly property string serverError: api ? (api.lastError || "") : ""
     readonly property string serverErrorCode: api ? (api.lastErrorCode || "") : ""
     readonly property var words: api ? api.words : []
+    readonly property string recoveryKitPath: api ? (api.recoveryKitPath || "") : ""
     readonly property string catalogUpdatedAt: api ? (api.catalogUpdatedAt || "") : ""
     readonly property bool catalogStale: Api.available(api) && Theme.isStale(catalogUpdatedAt)
 

@@ -187,15 +187,20 @@ LegionView {
 
                 Label {
                     Layout.fillWidth: true
-                    text: {
-                        if (shell && shell.kitPath.length > 0) {
-                            return qsTr("Файл с набором сохранён: %1").arg(shell.kitPath)
-                        }
-                        return qsTr("Файл с набором сохранён на этом компьютере.")
-                    }
+                    text: qsTr("Файл с набором сохранён на этом компьютере:")
                     color: Theme.textMuted
                     font.pointSize: Theme.fontSmall + 2
                     wrapMode: Text.Wrap
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: recoveryKitPath.length > 0
+                    text: recoveryKitPath
+                    color: Theme.textDim
+                    font.pointSize: Theme.fontSmall + 1
+                    font.family: "monospace"
+                    wrapMode: Text.WrapAnywhere
                 }
 
                 RowLayout {

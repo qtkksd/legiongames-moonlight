@@ -124,6 +124,12 @@ function reprintRecoveryKit(api) {
     return call0(api, "reprintRecoveryKit")
 }
 
+// Drops the local vault, device key and tokens. Used when the local key blob is
+// unreadable and the user chooses to start over.
+function resetLocalAccount(api) {
+    return call0(api, "resetLocalAccount")
+}
+
 function hasReprintRecoveryKit(api) {
     return has(api, "reprintRecoveryKit")
 }
@@ -668,7 +674,9 @@ function errorText(code, message) {
     // Support and bug reports need the exact slug; the localized sentence
     // alone hides which server/client branch failed.
     var codeText = code ? String(code) : ""
-    if (codeText.length > 0 && result.indexOf("[" + codeText + "]") < 0) {
+    var messageText = message ? String(message) : ""
+    if (codeText.length > 0 && result.indexOf(codeText) < 0 &&
+            messageText.indexOf(codeText) < 0) {
         result = result + " [" + codeText + "]"
     }
     return result

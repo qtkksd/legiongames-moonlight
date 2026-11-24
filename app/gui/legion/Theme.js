@@ -134,8 +134,14 @@ function ageSeconds(value) {
 }
 
 function isStale(value) {
-    var age = ageSeconds(value)
-    if (age < 0) {
+    var date = parseDate(value)
+    if (date === null) {
+        return true
+    }
+    var age = (new Date().getTime() - date.getTime()) / 1000
+    // A small negative age is clock skew between the PC and the server, not
+    // stale data. Only reject timestamps far in the future.
+    if (age < -300) {
         return true
     }
     return age > staleSeconds

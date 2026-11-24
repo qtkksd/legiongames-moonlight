@@ -40,6 +40,7 @@ class LegionApi : public QObject
     Q_PROPERTY(QVariantList legalDocuments READ legalDocuments NOTIFY legalDocumentsChanged)
     Q_PROPERTY(QString ageNotice READ ageNotice NOTIFY legalDocumentsChanged)
     Q_PROPERTY(QString installPath READ installPath CONSTANT)
+    Q_PROPERTY(QString recoveryKitPath READ recoveryKitPath NOTIFY recoveryKitPathChanged)
 
 public:
     explicit LegionApi(QObject *parent = nullptr);
@@ -58,6 +59,7 @@ public:
     QVariantList legalDocuments() const { return m_legalDocuments; }
     QString ageNotice() const { return m_ageNotice; }
     QString installPath() const;
+    QString recoveryKitPath() const;
 
     Q_INVOKABLE void initialize();
 
@@ -73,6 +75,7 @@ public:
                                      const QString &label);
     Q_INVOKABLE void refreshMe();
     Q_INVOKABLE void reprintRecoveryKit();
+    Q_INVOKABLE void resetLocalAccount();
     Q_INVOKABLE void deleteAccount(const QString &handle, const QStringList &words);
 
     Q_INVOKABLE void getLegalDocuments();
@@ -115,6 +118,7 @@ signals:
     void deviceChanged();
     void legalDocumentsChanged();
     void wordsChanged();
+    void recoveryKitPathChanged();
     void wordsReady(const QString &handle, const QStringList &words);
     void consentRequired();
     void paymentReturned(const QString &publicId);
@@ -206,6 +210,7 @@ private:
     QString m_pendingRecoveryTicket;
     QString m_pendingRecoveryHandle;
     QStringList m_pendingRecoveryWords;
+    QString m_recoveryKitPath;
 
     QString m_pollPublicId;
     int m_pollCount = 0;

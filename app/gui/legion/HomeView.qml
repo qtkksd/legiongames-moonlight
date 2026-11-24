@@ -74,6 +74,16 @@ LegionView {
         }
     }
 
+    Connections {
+        target: home.api
+        ignoreUnknownSignals: true
+        function onResponse(op, data) {
+            if (op === "session_start") {
+                home.go("qrc:/gui/legion/SessionView.qml", {})
+            }
+        }
+    }
+
     Timer {
         interval: 1000
         repeat: true
@@ -92,6 +102,7 @@ LegionView {
     }
 
     ScrollView {
+        contentWidth: availableWidth
         anchors.top: header.bottom
         anchors.topMargin: Theme.spaceL
         anchors.left: parent.left
@@ -255,7 +266,7 @@ LegionView {
 
                                 delegate: Rectangle {
                                     width: parent.width
-                                    height: 54
+                                    height: 60
                                     radius: Theme.radiusS
                                     color: Theme.panelAlt
                                     border.width: 1
@@ -286,10 +297,38 @@ LegionView {
                                             text: Api.clubAvailabilityText(modelData)
                                             tone: Api.clubTone(modelData)
                                         }
+
+                                        LegionButton {
+                                            id: clubAction
+                                            readonly property real clubBalance:
+                                                Api.balanceFor(home.wallet, modelData.id)
+                                            readonly property real clubPrice:
+                                                Number(modelData.price_per_hour || 0)
+                                            readonly property bool enough:
+                                                clubPrice <= 0 || clubBalance >= clubPrice
+
+                                            compact: true
+                                            kind: enough ? "primary" : "secondary"
+                                            text: enough ? qsTr("Играть") : qsTr("Пополнить")
+                                            enabled: !home.serverBusy
+                                            onClicked: {
+                                                if (enough) {
+                                                    Api.startSession(home.api, modelData.id)
+                                                }
+                                                else {
+                                                    home.go("qrc:/gui/legion/PaymentView.qml",
+                                                            { clubId: modelData.id,
+                                                              clubName: modelData.name })
+                                                }
+                                            }
+                                        }
                                     }
 
                                     MouseArea {
-                                        anchors.fill: parent
+                                        anchors.left: parent.left
+                                        anchors.top: parent.top
+                                        anchors.bottom: parent.bottom
+                                        anchors.right: clubAction.left
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: home.openClub(modelData)
                                     }
@@ -378,36 +417,64 @@ LegionView {
 
                 NeonFrame {
                     width: parent.width - ((parent.width - Theme.spaceL) / 3) - Theme.spaceL
-                    height: 88
+                    height: walletColumn.implicitHeight + Theme.spaceL * 2
 
-                    RowLayout {
+                    ColumnLayout {
+                        id: walletColumn
                         anchors.fill: parent
                         anchors.margins: Theme.spaceL
-                        spacing: Theme.spaceM
+                        spacing: Theme.spaceXs
 
-                        ColumnLayout {
+                        RowLayout {
                             Layout.fillWidth: true
-                            spacing: 2
+                            spacing: Theme.spaceM
 
                             Label {
-                                text: qsTr("Кошелёк")
+                                Layout.fillWidth: true
+                                text: qsTr("Кошелёк по клубам")
                                 color: Theme.textMuted
                                 font.pointSize: Theme.fontSmall
                             }
 
-                            Label {
-                                text: qsTr("Пополнение — в браузере, игра — сразу после оплаты")
-                                color: Theme.text
-                                font.pointSize: Theme.fontBody
-                                wrapMode: Text.Wrap
-                                Layout.fillWidth: true
+                            LegionButton {
+                                kind: "secondary"
+                                compact: true
+                                text: qsTr("Пополнить")
+                                onClicked: home.goSection("wallet")
                             }
                         }
 
-                        LegionButton {
-                            kind: "secondary"
-                            text: qsTr("Пополнить")
-                            onClicked: home.goSection("wallet")
+                        Repeater {
+                            model: home.wallet
+
+                            delegate: RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.spaceM
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: modelData.club && modelData.club.name
+                                          ? modelData.club.name
+                                          : home.clubLabel(modelData.club_id)
+                                    color: Theme.text
+                                    font.pointSize: Theme.fontSmall + 1
+                                    elide: Text.ElideRight
+                                }
+
+                                Label {
+                                    text: Theme.money(modelData.balance)
+                                    color: Number(modelData.balance) > 0 ? Theme.text : Theme.warning
+                                    font.pointSize: Theme.fontSmall + 1
+                                    font.bold: true
+                                }
+                            }
+                        }
+
+                        Label {
+                            visible: home.wallet.length === 0
+                            text: qsTr("Баланс пока пуст")
+                            color: Theme.textMuted
+                            font.pointSize: Theme.fontSmall + 1
                         }
                     }
                 }

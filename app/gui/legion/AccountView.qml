@@ -82,6 +82,7 @@ LegionView {
     }
 
     ScrollView {
+        contentWidth: availableWidth
         anchors.top: header.bottom
         anchors.topMargin: Theme.spaceL
         anchors.left: parent.left
