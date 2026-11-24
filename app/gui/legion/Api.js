@@ -634,6 +634,21 @@ function errorText(code, message) {
     case "device_stale":
         text = "Устройство устарело. Восстановите доступ."
         break
+    case "consent_invalid":
+        text = "Не удалось подтвердить согласие. Повторите регистрацию."
+        break
+    case "legal_unavailable":
+        text = "Не удалось открыть документы. Проверьте соединение."
+        break
+    case "invalid_response":
+        text = "Сервер вернул неожиданный ответ. Повторите попытку."
+        break
+    case "unexpected_redirect":
+        text = "Сервер перенаправил запрос. Проверьте адрес API."
+        break
+    case "vault_unavailable":
+        text = "Не удалось открыть хранилище ключей. Аккаунт недоступен."
+        break
     case "server_error":
         text = "Сервер не отвечает. Попробуйте ещё раз."
         break
@@ -642,13 +657,21 @@ function errorText(code, message) {
         break
     }
 
+    var result = fallback
     if (text.length > 0) {
-        return text
+        result = text
     }
-    if (message && String(message).length > 0) {
-        return String(message)
+    else if (message && String(message).length > 0) {
+        result = String(message)
     }
-    return fallback
+
+    // Support and bug reports need the exact slug; the localized sentence
+    // alone hides which server/client branch failed.
+    var codeText = code ? String(code) : ""
+    if (codeText.length > 0 && result.indexOf("[" + codeText + "]") < 0) {
+        result = result + " [" + codeText + "]"
+    }
+    return result
 }
 
 // Error text with a short operation title so a banner never says just

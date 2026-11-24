@@ -793,6 +793,12 @@ void LegionApi::performLogin(bool silent)
                            begin.json.value(QStringLiteral("ceremony_id")).toString();
                        const QString challenge =
                            begin.json.value(QStringLiteral("challenge")).toString();
+                       if (ceremonyId.isEmpty() || challenge.isEmpty()) {
+                           setBusy(false);
+                           fail(QStringLiteral("login"), QStringLiteral("invalid_response"),
+                                QStringLiteral("Сервер вернул неверный ответ. Повторите попытку."));
+                           return;
+                       }
                        const QByteArray signature =
                            signCeremony(ceremonyId, challenge, QStringLiteral("login"));
                        if (signature.size() != 64) {
@@ -971,6 +977,12 @@ void LegionApi::registerAccount(const QString &label)
                                begin.json.value(QStringLiteral("ceremony_id")).toString();
                            const QString challenge =
                                begin.json.value(QStringLiteral("challenge")).toString();
+                           if (ceremonyId.isEmpty() || challenge.isEmpty()) {
+                               fail(QStringLiteral("register"),
+                                    QStringLiteral("invalid_response"),
+                                    QStringLiteral("Сервер вернул неверный ответ. Повторите попытку."));
+                               return;
+                           }
 
                            QString errorCode;
                            const QJsonObject payload = Consent::buildPayload(
@@ -1301,6 +1313,11 @@ void LegionApi::recoverComplete(const QString &handle, const QStringList &words,
                     begin.json.value(QStringLiteral("ceremony_id")).toString();
                 const QString challenge =
                     begin.json.value(QStringLiteral("challenge")).toString();
+                if (ceremonyId.isEmpty() || challenge.isEmpty()) {
+                    fail(QStringLiteral("recover"), QStringLiteral("invalid_response"),
+                         QStringLiteral("Сервер вернул неверный ответ. Повторите попытку."));
+                    return;
+                }
 
                 DeviceKey *newKey = DeviceKey::generate();
                 if (newKey == nullptr) {

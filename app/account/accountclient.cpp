@@ -77,6 +77,12 @@ QString defaultMessageForCode(const QString &code)
     if (code == QLatin1String("vault_unavailable")) {
         return QStringLiteral("Не удалось открыть хранилище ключей. Аккаунт недоступен.");
     }
+    if (code == QLatin1String("invalid_response")) {
+        return QStringLiteral("Сервер вернул неожиданный ответ. Проверьте адрес API.");
+    }
+    if (code == QLatin1String("unexpected_redirect")) {
+        return QStringLiteral("Сервер перенаправил запрос. Проверьте адрес API.");
+    }
     return QStringLiteral("Ошибка запроса. Попробуйте ещё раз.");
 }
 
@@ -88,7 +94,9 @@ AccountClient::AccountClient(Vault *vault, QObject *parent) :
 {
     m_nam = new QNetworkAccessManager(this);
     m_nam->setStrictTransportSecurityEnabled(true);
-    m_nam->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
+    // The app API never redirects. Following a legacy 302 would turn a JSON
+    // error into a 200 HTML page and hide the real failure.
+    m_nam->setRedirectPolicy(QNetworkRequest::ManualRedirectPolicy);
     // setCookieJar() takes ownership; no parent to avoid a double delete.
     m_nam->setCookieJar(new NoCookieJar(nullptr));
 
@@ -483,6 +491,14 @@ void AccountClient::handleReply(QNetworkReply *reply, const Pending &pending)
     result.networkError = transportFailure;
     result.ok = !transportFailure && result.httpStatus >= 200 && result.httpStatus < 300;
 
+    if (result.ok && !document.isObject()) {
+        // A 2xx that is not a JSON object is not an app API response. Treat it
+        // as a protocol error instead of letting empty fields reach the UI.
+        result.ok = false;
+        result.errorCode = QStringLiteral("invalid_response");
+        result.message = QStringLiteral("Сервер вернул неожиданный ответ. Проверьте адрес API.");
+    }
+
     if (!result.ok) {
         const QJsonValue errorValue = result.json.value(QStringLiteral("error"));
         if (errorValue.isObject()) {
@@ -516,6 +532,13 @@ void AccountClient::handleReply(QNetworkReply *reply, const Pending &pending)
                     break;
                 case 409:
                     result.errorCode = QStringLiteral("conflict");
+                    break;
+                case 301:
+                case 302:
+                case 303:
+                case 307:
+                case 308:
+                    result.errorCode = QStringLiteral("unexpected_redirect");
                     break;
                 case 410:
                     result.errorCode = QStringLiteral("handoff_expired");
