@@ -118,6 +118,7 @@ LegionView {
         anchors.bottomMargin: Theme.spaceL
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical: LegionScrollBar { }
 
         Column {
             width: parent.width
@@ -439,8 +440,8 @@ LegionView {
 
                         LegionButton {
                             kind: "secondary"
-                            text: qsTr("support@legiongames.ru")
-                            onClicked: settings.openUrl("mailto:support@legiongames.ru")
+                            text: qsTr("rem.legiongames@yandex.com")
+                            onClicked: settings.openUrl("mailto:rem.legiongames@yandex.com")
                         }
 
                         Item { Layout.fillWidth: true }

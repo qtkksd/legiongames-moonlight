@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QTextStream>
 #include <QtDebug>
 
@@ -54,6 +55,67 @@ bool restrictToCurrentUser(const QString &path)
 }
 #endif
 
+QStringList kitDirectories()
+{
+    QStringList directories;
+    const QString appDir = QCoreApplication::applicationDirPath();
+    if (!appDir.isEmpty() && QFileInfo(appDir).isWritable()) {
+        directories.append(appDir);
+    }
+
+    for (const auto location : {QStandardPaths::AppLocalDataLocation,
+                                QStandardPaths::AppDataLocation}) {
+        const QString base = QStandardPaths::writableLocation(location);
+        if (!base.isEmpty()) {
+            directories.append(base + QStringLiteral("/recovery"));
+        }
+    }
+
+    const QString documents =
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (!documents.isEmpty()) {
+        directories.append(documents + QStringLiteral("/LegionGames"));
+    }
+
+    directories.append(QDir::tempPath() + QStringLiteral("/LegionGames"));
+    directories.removeDuplicates();
+    return directories;
+}
+
+bool writeKitFile(const QString &path, const QByteArray &contents, QString *error)
+{
+    if (QFile::exists(path)) {
+        QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        QFile::remove(path);
+    }
+
+    QSaveFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        if (file.write(contents) == contents.size() && file.commit()) {
+            return true;
+        }
+        file.cancelWriting();
+    }
+
+    // Some filesystems reject QSaveFile's temp-file rename. Fall back to a
+    // direct truncate so a reprint still succeeds when the file already exists.
+    QFile direct(path);
+    if (direct.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        if (direct.write(contents) == contents.size()) {
+            direct.close();
+            return true;
+        }
+        if (error) {
+            *error = direct.errorString();
+        }
+        direct.close();
+    }
+    else if (error) {
+        *error = direct.errorString();
+    }
+    return false;
+}
+
 } // namespace
 
 QString RecoveryKit::defaultDirectory()
@@ -99,7 +161,6 @@ bool RecoveryKit::isSyncedFolder(const QString &path)
             return true;
         }
     }
-
     // Cloud clients also let the user move the folder and point an environment
     // variable at it, which the path check alone would miss.
     const QStringList environment = {
@@ -168,36 +229,30 @@ RecoveryKit::Result RecoveryKit::write(const QString &handle, const QStringList 
         return result;
     }
 
-    const QString directory = defaultDirectory();
-    if (!QDir().mkpath(directory)) {
-        result.errorCode = QStringLiteral("recovery_kit_write_failed");
-        result.message = QStringLiteral("Не удалось создать папку для памятки.");
-        return result;
-    }
-
-    const QString path = directory + QStringLiteral("/legiongames-recovery-") +
-                         sanitizedHandle(handle) + QStringLiteral(".txt");
-
-    // Re-printing must replace the previous kit. Removing it first also covers
-    // filesystems where QSaveFile cannot atomically replace an existing file.
-    if (QFile::exists(path)) {
-        QFile::remove(path);
-    }
-
-    QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        result.errorCode = QStringLiteral("recovery_kit_write_failed");
-        result.message = QStringLiteral("Не удалось перезаписать файл памятки.");
-        qWarning() << "RecoveryKit: cannot open" << path << file.errorString();
-        return result;
-    }
-
     const QByteArray contents =
         buildContents(handle, words, deviceLabel, date).toUtf8();
-    if (file.write(contents) != contents.size() || !file.commit()) {
+    const QString fileName = QStringLiteral("/legiongames-recovery-") +
+                             sanitizedHandle(handle) + QStringLiteral(".txt");
+
+    QString path;
+    QString lastError;
+    for (const QString &directory : kitDirectories()) {
+        if (!QDir().mkpath(directory)) {
+            lastError = QStringLiteral("cannot create %1").arg(directory);
+            continue;
+        }
+        const QString candidate = directory + fileName;
+        if (writeKitFile(candidate, contents, &lastError)) {
+            path = candidate;
+            break;
+        }
+        qWarning() << "RecoveryKit: cannot write" << candidate << lastError;
+    }
+
+    if (path.isEmpty()) {
         result.errorCode = QStringLiteral("recovery_kit_write_failed");
-        result.message = QStringLiteral("Не удалось записать памятку. Освободите место на диске.");
-        qWarning() << "RecoveryKit: write failed" << path;
+        result.message = QStringLiteral("Не удалось записать памятку. Проверьте папку приложения.");
+        qWarning() << "RecoveryKit: all locations failed, last error:" << lastError;
         return result;
     }
 

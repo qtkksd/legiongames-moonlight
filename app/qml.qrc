@@ -46,6 +46,7 @@
         <file>gui/legion/PaymentView.qml</file>
         <file>gui/legion/AccountView.qml</file>
         <file>gui/legion/LegionSettingsView.qml</file>
+        <file>gui/legion/LegionScrollBar.qml</file>
         <file>gui/legion/StreamSettingsView.qml</file>
     </qresource>
 </RCC>

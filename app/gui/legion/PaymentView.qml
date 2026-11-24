@@ -23,6 +23,7 @@ LegionView {
     property string intentStatus: ""
     property string intentAmount: ""
     property string intentBonus: ""
+    property string promoCode: ""
     property int pollTries: 0
     property bool submitting: false
 
@@ -111,7 +112,7 @@ LegionView {
         }
         clearError()
         submitting = true
-        Api.createTopup(api, clubId, (amount * 1.0).toFixed(2))
+        Api.createTopup(api, clubId, (amount * 1.0).toFixed(2), promoCode)
     }
 
     function checkStatus() {
@@ -291,6 +292,7 @@ LegionView {
         anchors.bottomMargin: Theme.spaceL
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical: LegionScrollBar { }
 
         Column {
             width: parent.width
@@ -408,16 +410,35 @@ LegionView {
 
                     TextField {
                         id: amountField
-                        Layout.preferredWidth: 220
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("Своя сумма")
                         text: String(payment.amount)
                         validator: IntValidator { bottom: 1; top: 10000 }
                         inputMethodHints: Qt.ImhDigitsOnly
                         onTextChanged: {
-                            var value = parseInt(text, 10)
+                            var trimmed = text.trim()
+                            if (trimmed.length === 0) {
+                                payment.amount = 0
+                                return
+                            }
+                            var value = parseInt(trimmed, 10)
                             if (!isNaN(value)) {
                                 payment.amount = value
                             }
                         }
+                    }
+
+                    Label {
+                        text: qsTr("Промокод")
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontSmall
+                    }
+
+                    TextField {
+                        id: promoField
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("Если есть — введите код")
+                        onTextChanged: payment.promoCode = text.trim()
                     }
 
                     Label {

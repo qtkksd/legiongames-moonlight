@@ -113,6 +113,7 @@ LegionView {
         anchors.bottomMargin: Theme.spaceL
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical: LegionScrollBar { }
 
         Column {
             id: body
@@ -125,6 +126,7 @@ LegionView {
                 visible: AutoUpdateChecker.updateAvailable
                 height: updateNotice.implicitHeight + Theme.spaceXl * 2
                 highlighted: true
+                flicker: true
 
                 ColumnLayout {
                     id: updateNotice

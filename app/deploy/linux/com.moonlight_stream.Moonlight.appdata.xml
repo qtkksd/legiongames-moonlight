@@ -27,7 +27,7 @@
 	<developer id="ru.legiongames">
 		<name>LegionGames</name>
 	</developer>
-	<update_contact>support@legiongames.ru</update_contact>
+	<update_contact>rem.legiongames@yandex.com</update_contact>
 	<launchable type="desktop-id">com.moonlight_stream.Moonlight.desktop</launchable>
 	<provides>
 		<binary>moonlight</binary>

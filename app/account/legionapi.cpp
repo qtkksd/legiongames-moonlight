@@ -166,6 +166,9 @@ void LegionApi::initialize()
     if (m_deviceKey != nullptr) {
         m_client->setDeviceKey(m_deviceKey);
     }
+    else if (!errorCode.isEmpty()) {
+        qWarning() << "Account: device key unavailable on startup:" << errorCode;
+    }
 
     const bool haveRefresh = m_client->restoreRefreshToken();
     if (haveRefresh || m_deviceKey != nullptr) {
@@ -359,8 +362,21 @@ void LegionApi::loadAccountRecord()
     }
 
     const QJsonObject record = QJsonDocument::fromJson(blob).object();
-    setHandle(record.value(QStringLiteral("handle")).toString());
-    setOnboardingStep(record.value(QStringLiteral("onboarding_step")).toString());
+    QJsonObject effective = record;
+    if (effective.isEmpty()) {
+        bool backupOk = false;
+        const QByteArray backup = m_vault->load(
+            QString::fromLatin1(kAccountVaultKey) + QStringLiteral(".bak"), &backupOk);
+        if (backupOk) {
+            effective = QJsonDocument::fromJson(backup).object();
+            if (!effective.isEmpty()) {
+                m_vault->save(QString::fromLatin1(kAccountVaultKey), backup);
+                qWarning() << "Account: recovered account record from backup";
+            }
+        }
+    }
+    setHandle(effective.value(QStringLiteral("handle")).toString());
+    setOnboardingStep(effective.value(QStringLiteral("onboarding_step")).toString());
 }
 
 void LegionApi::persistAccount()
@@ -1505,7 +1521,9 @@ void LegionApi::checkNetbirdStatus()
                 process->deleteLater();
             });
 
-    process->start(exe, {QStringLiteral("status"), QStringLiteral("--json")});
+    QStringList arguments;
+    arguments << QStringLiteral("status") << QStringLiteral("--json");
+    process->start(exe, arguments);
 }
 
 void LegionApi::resetLocalAccount()
@@ -1844,6 +1862,12 @@ void LegionApi::getWalletHistory(const QString &cursor)
 
 void LegionApi::createTopup(int clubId, const QString &amount)
 {
+    createTopupWithPromo(clubId, amount, QString());
+}
+
+void LegionApi::createTopupWithPromo(int clubId, const QString &amount,
+                                     const QString &promoCode)
+{
     if (!ensureAccount(QStringLiteral("topup"))) {
         return;
     }
@@ -1860,6 +1884,7 @@ void LegionApi::createTopup(int clubId, const QString &amount)
         return;
     }
 
+    const QString promo = promoCode.trimmed();
     setBusy(true);
     clearError();
 
@@ -1868,15 +1893,16 @@ void LegionApi::createTopup(int clubId, const QString &amount)
     body.insert(QStringLiteral("club_id"), clubId);
     body.insert(QStringLiteral("amount"), normalizedAmount);
     body.insert(QStringLiteral("purchase_type"), QStringLiteral("topup"));
-    body.insert(QStringLiteral("promo_code"), QJsonValue::Null);
+    body.insert(QStringLiteral("promo_code"),
+                promo.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(promo));
     body.insert(QStringLiteral("client_request_id"), requestId);
 
     m_client->post(QStringLiteral("/payments/intents"), body, true, requestId,
-                   [this, clubId, normalizedAmount](const ApiResult &intent) {
+                   [this, clubId, normalizedAmount, promo](const ApiResult &intent) {
                        if (!intent.ok) {
                            failFromResult(QStringLiteral("topup"), intent,
-                                          [this, clubId, normalizedAmount]() {
-                                              createTopup(clubId, normalizedAmount);
+                                          [this, clubId, normalizedAmount, promo]() {
+                                              createTopupWithPromo(clubId, normalizedAmount, promo);
                                           });
                            return;
                        }

@@ -90,6 +90,8 @@ public:
     Q_INVOKABLE void getWallet();
     Q_INVOKABLE void getWalletHistory(const QString &cursor);
     Q_INVOKABLE void createTopup(int clubId, const QString &amount);
+    Q_INVOKABLE void createTopupWithPromo(int clubId, const QString &amount,
+                                          const QString &promoCode);
     Q_INVOKABLE void pollIntent(const QString &publicId);
 
     Q_INVOKABLE void startSession(int clubId);

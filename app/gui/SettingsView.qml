@@ -8,6 +8,8 @@ import ComputerManager 1.0
 import SdlGamepadKeyNavigation 1.0
 import SystemProperties 1.0
 
+import "legion" as Legion
+
 Flickable {
     id: settingsPage
     objectName: qsTr("Settings")
@@ -39,7 +41,7 @@ Flickable {
     contentWidth: settingsColumn1.width > settingsColumn2.width ? settingsColumn1.width : settingsColumn2.width
     contentHeight: settingsColumn1.height > settingsColumn2.height ? settingsColumn1.height : settingsColumn2.height
 
-    ScrollBar.vertical: ScrollBar {
+    ScrollBar.vertical: Legion.LegionScrollBar {
         anchors {
             left: parent.right
             leftMargin: -10

@@ -347,6 +347,23 @@ DeviceKey *DeviceKey::load(Vault *vault, QString *errorCode)
 
     DeviceKey *key = fromPkcs8(der);
     if (key == nullptr) {
+        // The primary blob can decrypt but fail PKCS#8 parsing (truncated or
+        // partially written). Try the encrypted backup before declaring the
+        // key lost.
+        bool backupOk = false;
+        const QByteArray backup = vault->load(vaultKey() + QStringLiteral(".bak"),
+                                              &backupOk);
+        if (backupOk) {
+            key = fromPkcs8(backup);
+            if (key != nullptr) {
+                vault->save(vaultKey(), backup);
+                qWarning() << "DeviceKey: recovered device key from backup";
+                if (errorCode) {
+                    errorCode->clear();
+                }
+                return key;
+            }
+        }
         if (errorCode) {
             *errorCode = QStringLiteral("device_key_corrupt");
         }
@@ -380,6 +397,20 @@ DeviceKey *DeviceKey::loadOrCreate(Vault *vault, bool *created, QString *errorCo
         // registered account. A corrupt blob must go through recovery.
         DeviceKey *key = fromPkcs8(existing);
         if (key == nullptr) {
+            bool backupOk = false;
+            const QByteArray backup = vault->load(vaultKey() + QStringLiteral(".bak"),
+                                                  &backupOk);
+            if (backupOk) {
+                key = fromPkcs8(backup);
+                if (key != nullptr) {
+                    vault->save(vaultKey(), backup);
+                    qWarning() << "DeviceKey: recovered device key from backup";
+                    if (errorCode) {
+                        errorCode->clear();
+                    }
+                    return key;
+                }
+            }
             if (!allowReplaceCorrupt) {
                 if (errorCode) {
                     *errorCode = QStringLiteral("device_key_corrupt");

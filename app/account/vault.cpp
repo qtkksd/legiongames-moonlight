@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QtDebug>
 
@@ -149,24 +150,22 @@ public:
 
         QDir().mkpath(directoryPath());
         const QString path = filePath(name);
-        QFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            m_error = QStringLiteral("vault_error");
-            qWarning() << "Vault: cannot write DPAPI blob" << path << file.errorString();
-            SecureZeroMemory(out.pbData, out.cbData);
-            LocalFree(out.pbData);
-            return false;
-        }
-
-        const qint64 written = file.write(reinterpret_cast<const char *>(out.pbData),
-                                          static_cast<qint64>(out.cbData));
-        file.close();
+        const QByteArray blob(reinterpret_cast<const char *>(out.pbData),
+                              static_cast<int>(out.cbData));
         SecureZeroMemory(out.pbData, out.cbData);
         LocalFree(out.pbData);
 
-        if (written < 0) {
+        QSaveFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) {
             m_error = QStringLiteral("vault_error");
-            QFile::remove(path);
+            qWarning() << "Vault: cannot write DPAPI blob" << path << file.errorString();
+            return false;
+        }
+
+        if (file.write(blob) != blob.size() || !file.commit()) {
+            m_error = QStringLiteral("vault_error");
+            qWarning() << "Vault: cannot commit DPAPI blob" << path << file.errorString();
+            file.cancelWriting();
             return false;
         }
 
@@ -601,21 +600,37 @@ QByteArray Vault::load(const QString &name, bool *ok)
 
     bool loaded = false;
     const QByteArray data = m_backend->load(name, &loaded);
-    if (!loaded) {
-        QString code = m_backend->lastErrorCode();
-        if (code.isEmpty()) {
-            code = QStringLiteral("vault_error");
+    if (loaded) {
+        m_lastErrorCode.clear();
+        m_lastErrorMessage.clear();
+        if (ok) {
+            *ok = true;
         }
-        setError(code);
-        return QByteArray();
+        return data;
     }
 
-    m_lastErrorCode.clear();
-    m_lastErrorMessage.clear();
-    if (ok) {
-        *ok = true;
+    // A corrupt or partially written primary blob must not strand the account.
+    // The backup is written with the same DPAPI/OS protection.
+    const QString backup = name + QStringLiteral(".bak");
+    bool backupLoaded = false;
+    const QByteArray backupData = m_backend->load(backup, &backupLoaded);
+    if (backupLoaded) {
+        qWarning() << "Vault: recovered" << name << "from backup";
+        m_backend->save(name, backupData);
+        m_lastErrorCode.clear();
+        m_lastErrorMessage.clear();
+        if (ok) {
+            *ok = true;
+        }
+        return backupData;
     }
-    return data;
+
+    QString code = m_backend->lastErrorCode();
+    if (code.isEmpty()) {
+        code = QStringLiteral("vault_error");
+    }
+    setError(code);
+    return QByteArray();
 }
 
 bool Vault::save(const QString &name, const QByteArray &data)
@@ -635,6 +650,13 @@ bool Vault::save(const QString &name, const QByteArray &data)
         return false;
     }
 
+    // Keep a second copy for recovery from a truncated primary blob. A failed
+    // backup must not fail the primary write.
+    if (!m_backend->save(name + QStringLiteral(".bak"), data)) {
+        qWarning() << "Vault: cannot write backup for" << name
+                   << m_backend->lastErrorCode();
+    }
+
     m_lastErrorCode.clear();
     m_lastErrorMessage.clear();
     return true;
@@ -648,6 +670,7 @@ bool Vault::remove(const QString &name)
         return false;
     }
 
+    m_backend->remove(name + QStringLiteral(".bak"));
     if (!m_backend->remove(name)) {
         QString code = m_backend->lastErrorCode();
         if (code.isEmpty()) {

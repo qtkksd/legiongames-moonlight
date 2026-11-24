@@ -17,6 +17,15 @@ LegionView {
         }
     }
 
+    Rectangle {
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: header.y + header.height + Theme.spaceL
+        color: Theme.bg
+        z: 1
+    }
+
     PageHeader {
         id: header
         anchors.top: parent.top
@@ -25,6 +34,7 @@ LegionView {
         anchors.margins: Theme.spaceXl
         title: qsTr("Трансляция")
         subtitle: qsTr("Качество, звук, управление и хост")
+        z: 2
     }
 
     Loader {
@@ -38,5 +48,7 @@ LegionView {
         anchors.rightMargin: Theme.spaceXl
         anchors.bottomMargin: Theme.spaceL
         source: "qrc:/gui/SettingsView.qml"
+        clip: true
+        z: 0
     }
 }

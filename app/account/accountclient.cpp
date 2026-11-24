@@ -276,20 +276,44 @@ QByteArray AccountClient::loadStoredRefreshToken(QDateTime *expiresAt)
 
     bool ok = false;
     const QByteArray blob = m_vault->load(QString::fromLatin1(kRefreshTokenVaultKey), &ok);
-    if (!ok) {
-        return QByteArray();
+
+    auto readRecord = [](const QByteArray &data, QByteArray *token, QDateTime *expiry) {
+        *token = QByteArray();
+        *expiry = QDateTime();
+        const QJsonObject record = QJsonDocument::fromJson(data).object();
+        *token = record.value(QStringLiteral("token")).toString().toUtf8();
+        QDateTime value = QDateTime::fromString(
+            record.value(QStringLiteral("expires_at")).toString(), Qt::ISODate);
+        if (value.isValid()) {
+            value = value.toUTC();
+        }
+        *expiry = value;
+    };
+
+    QByteArray token;
+    QDateTime expiry;
+    if (ok) {
+        readRecord(blob, &token, &expiry);
     }
 
-    const QJsonObject record = QJsonDocument::fromJson(blob).object();
-    const QByteArray token = record.value(QStringLiteral("token")).toString().toUtf8();
+    if (token.isEmpty()) {
+        // The encrypted primary blob may decrypt but contain invalid JSON.
+        // Recover the rotating token from the encrypted backup.
+        bool backupOk = false;
+        const QByteArray backup = m_vault->load(
+            QString::fromLatin1(kRefreshTokenVaultKey) + QStringLiteral(".bak"),
+            &backupOk);
+        if (backupOk) {
+            readRecord(backup, &token, &expiry);
+            if (!token.isEmpty()) {
+                m_vault->save(QString::fromLatin1(kRefreshTokenVaultKey), backup);
+                qWarning() << "Account: recovered refresh token from backup";
+            }
+        }
+    }
+
     if (token.isEmpty()) {
         return QByteArray();
-    }
-
-    QDateTime expiry = QDateTime::fromString(
-        record.value(QStringLiteral("expires_at")).toString(), Qt::ISODate);
-    if (expiry.isValid()) {
-        expiry = expiry.toUTC();
     }
 
     if (expiry.isValid() && expiry <= QDateTime::currentDateTimeUtc()) {

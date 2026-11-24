@@ -68,6 +68,7 @@ LegionView {
         anchors.bottomMargin: Theme.spaceL
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical: LegionScrollBar { }
 
         Column {
             width: parent.width
@@ -229,7 +230,7 @@ LegionView {
                 }
 
                 Text {
-                    text: '<a href="mailto:support@legiongames.ru">support@legiongames.ru</a>'
+                    text: '<a href="mailto:rem.legiongames@yandex.com">rem.legiongames@yandex.com</a>'
                     textFormat: Text.RichText
                     color: Theme.textMuted
                     linkColor: Theme.accent

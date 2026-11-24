@@ -16,6 +16,10 @@ LegionView {
 
     readonly property bool reconsent: purpose === "reconsent"
     readonly property bool wordsPending: !reconsent && onboardingStep === "words"
+    // A local account record exists but the device key could not be loaded.
+    // Do not offer account creation again: that would create a duplicate
+    // server account. Recovery is the only safe path.
+    readonly property bool keyLost: appState === "no_account" && handle.length > 0
 
     property bool agreementChecked: false
     property bool pdnChecked: false
@@ -33,7 +37,7 @@ LegionView {
                                   ? api.suggestedDeviceLabel
                                   : qsTr("Мой компьютер")
 
-    readonly property bool canRegister: agreementChecked && pdnChecked &&
+    readonly property bool canRegister: !keyLost && agreementChecked && pdnChecked &&
                                         deviceLabel.trim().length > 0 &&
                                         !submitting && !serverBusy
 
@@ -43,13 +47,16 @@ LegionView {
                                             : qsTr("Сервис предназначен для лиц старше 18 лет.")
 
     function activate() {
-        if (!wordsPending) {
+        if (!wordsPending && !keyLost) {
             agreementBox.forceActiveFocus()
         }
     }
 
     function focusFirst() {
-        if (!wordsPending) {
+        if (keyLost) {
+            recoveryButton.forceActiveFocus()
+        }
+        else if (!wordsPending) {
             agreementBox.forceActiveFocus()
         }
     }
@@ -150,12 +157,38 @@ LegionView {
 
                 Label {
                     Layout.fillWidth: true
-                    text: onboarding.reconsent ? qsTr("Примите обновлённые документы")
-                                               : qsTr("Создание аккаунта")
+                    text: onboarding.keyLost
+                          ? qsTr("Восстановление доступа")
+                          : (onboarding.reconsent
+                             ? qsTr("Примите обновлённые документы")
+                             : qsTr("Создание аккаунта"))
                     color: Theme.text
                     font.pointSize: Theme.fontHero + 4
                     font.bold: true
                     wrapMode: Text.Wrap
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: onboarding.keyLost
+                    spacing: Theme.spaceS
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Аккаунт %1 уже создан на этом ПК.").arg(onboarding.handle)
+                        color: Theme.text
+                        font.pointSize: Theme.fontBody + 2
+                        wrapMode: Text.Wrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Ключ устройства не загрузился. Восстановите доступ по восьми " +
+                                   "словам — новый аккаунт создавать не нужно.")
+                        color: Theme.warning
+                        font.pointSize: Theme.fontBody + 2
+                        wrapMode: Text.Wrap
+                    }
                 }
 
                 Label {
@@ -202,7 +235,7 @@ LegionView {
                 // ---- consent form ----------------------------------------
                 ColumnLayout {
                     Layout.fillWidth: true
-                    visible: !onboarding.wordsPending
+                    visible: !onboarding.wordsPending && !onboarding.keyLost
                     spacing: Theme.spaceM
 
                     RowLayout {
@@ -279,7 +312,8 @@ LegionView {
                 // ---- device label ----------------------------------------
                 ColumnLayout {
                     Layout.fillWidth: true
-                    visible: !onboarding.reconsent && !onboarding.wordsPending
+                    visible: !onboarding.reconsent && !onboarding.wordsPending &&
+                             !onboarding.keyLost
                     spacing: Theme.spaceXs
 
                     Label {
@@ -311,7 +345,8 @@ LegionView {
 
                 LegionButton {
                     Layout.fillWidth: true
-                    visible: onboarding.errorCode === "device_key_corrupt"
+                    visible: onboarding.errorCode === "device_key_corrupt" ||
+                             onboarding.keyLost
                     kind: "secondary"
                     text: qsTr("Сбросить локальные данные")
                     onClicked: Api.resetLocalAccount(onboarding.api)
@@ -339,6 +374,7 @@ LegionView {
                     Item { Layout.fillWidth: true }
 
                     LegionButton {
+                        id: recoveryButton
                         kind: "ghost"
                         visible: !onboarding.reconsent && !onboarding.wordsPending
                         text: qsTr("Восстановить доступ")
@@ -351,7 +387,8 @@ LegionView {
 
                     LegionButton {
                         kind: "ghost"
-                        visible: !onboarding.reconsent && !onboarding.wordsPending
+                        visible: !onboarding.reconsent && !onboarding.wordsPending &&
+                                 !onboarding.keyLost
                         text: qsTr("У меня уже есть аккаунт")
                         onClicked: Api.login(onboarding.api)
                     }
@@ -359,7 +396,8 @@ LegionView {
                     LegionButton {
                         id: primaryButton
                         kind: "primary"
-                        focus: !onboarding.wordsPending
+                        visible: !onboarding.keyLost
+                        focus: !onboarding.wordsPending && !onboarding.keyLost
                         enabled: onboarding.reconsent
                                  ? (onboarding.agreementChecked && onboarding.pdnChecked)
                                  : onboarding.canRegister

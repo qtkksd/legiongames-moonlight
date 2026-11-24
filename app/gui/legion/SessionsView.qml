@@ -93,6 +93,7 @@ LegionView {
         anchors.bottomMargin: Theme.spaceL
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical: LegionScrollBar { }
 
         Column {
             width: parent.width

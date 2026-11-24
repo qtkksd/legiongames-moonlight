@@ -158,6 +158,7 @@ LegionView {
         anchors.bottomMargin: Theme.spaceL
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical: LegionScrollBar { }
 
         Column {
             width: parent.width
@@ -236,6 +237,7 @@ LegionView {
 
                         StatusPill {
                             Layout.alignment: Qt.AlignRight
+                            visible: detail.club !== null
                             text: Api.clubAvailabilityText(detail.club)
                             tone: Api.clubTone(detail.club)
                         }
@@ -297,8 +299,17 @@ LegionView {
 
                         Label {
                             Layout.fillWidth: true
+                            visible: detail.club !== null
                             text: qsTr("Свободно %1 из %2 ПК").arg(detail.freeUnits)
                                   .arg(detail.club ? (detail.club.total_units || 0) : 0)
+                            color: Theme.textMuted
+                            font.pointSize: Theme.fontBody
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            visible: detail.club === null
+                            text: qsTr("Загружаем данные клуба…")
                             color: Theme.textMuted
                             font.pointSize: Theme.fontBody
                         }
@@ -369,7 +380,7 @@ LegionView {
                     LegionButton {
                         id: playButton
                         kind: "primary"
-                        enabled: detail.canPlay || detail.canQueue
+                        enabled: !detail.serverBusy && !detail.starting && !detail.joining
                         focus: detail.canPlay || detail.canQueue
                         text: {
                             if (detail.freeUnits > 0) {

@@ -172,7 +172,10 @@ function getWallet(api) {
     return call0(api, "getWallet")
 }
 
-function createTopup(api, clubId, amount) {
+function createTopup(api, clubId, amount, promoCode) {
+    if (promoCode && String(promoCode).length > 0 && has(api, "createTopupWithPromo")) {
+        return call3(api, "createTopupWithPromo", clubId, amount, String(promoCode))
+    }
     return call2(api, "createTopup", clubId, amount)
 }
 
