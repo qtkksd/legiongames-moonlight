@@ -425,6 +425,7 @@ LegionView {
                               "arch: " + SystemProperties.friendlyNativeArchName + "\n" +
                               "account: " + (settings.handle.length > 0 ? settings.handle : "none") + "\n" +
                               "state: " + (settings.appState.length > 0 ? settings.appState : "unknown") + "\n" +
+                              "vault: " + (settings.vaultPath.length > 0 ? settings.vaultPath : "unavailable") + "\n" +
                               "last_error: " + (settings.serverErrorCode.length > 0 ? settings.serverErrorCode : "none")
                     }
 

@@ -109,6 +109,7 @@ public:
     Q_INVOKABLE void openExternal(const QString &url);
     Q_INVOKABLE void openInstallFolder();
     Q_INVOKABLE void openLogFolder();
+    Q_INVOKABLE QString vaultPath() const;
     Q_INVOKABLE void retryFailedStep();
 
     // Called by main.cpp when a legiongames://payment/<uuid> launch or a

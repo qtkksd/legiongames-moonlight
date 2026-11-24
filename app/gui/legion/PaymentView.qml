@@ -408,6 +408,12 @@ LegionView {
                         Item { Layout.fillWidth: true }
                     }
 
+                    Label {
+                        text: qsTr("Своя сумма")
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontSmall
+                    }
+
                     TextField {
                         id: amountField
                         Layout.fillWidth: true

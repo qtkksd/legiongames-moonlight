@@ -2377,6 +2377,15 @@ void LegionApi::openLogFolder()
     }
 }
 
+QString LegionApi::vaultPath() const
+{
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (base.isEmpty()) {
+        return QString();
+    }
+    return QDir::toNativeSeparators(base + QStringLiteral("/vault"));
+}
+
 void LegionApi::retryFailedStep()
 {
     if (!m_retry) {
