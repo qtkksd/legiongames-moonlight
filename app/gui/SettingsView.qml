@@ -9,6 +9,7 @@ import SdlGamepadKeyNavigation 1.0
 import SystemProperties 1.0
 
 import "legion" as Legion
+import "legion/Theme.js" as Theme
 
 Flickable {
     id: settingsPage
@@ -165,7 +166,7 @@ Flickable {
             width: (parent.width - (parent.leftPadding + parent.rightPadding))
             padding: 12
             title: "<font color=\"skyblue\">" + qsTr("Basic Settings") + "</font>"
-            font.pointSize: 12
+            font.pointSize: Theme.fontBody
 
             Column {
                 anchors.fill: parent
@@ -175,7 +176,7 @@ Flickable {
                     width: parent.width
                     id: resFPStitle
                     text: qsTr("Resolution and FPS")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     wrapMode: Text.Wrap
                 }
 
@@ -183,7 +184,7 @@ Flickable {
                     width: parent.width
                     id: resFPSdesc
                     text: qsTr("Setting values too high for your PC or network connection may cause lag, stuttering, or errors.")
-                    font.pointSize: 9
+                    font.pointSize: Theme.fontCaption
                     wrapMode: Text.Wrap
                 }
 
@@ -731,7 +732,7 @@ Flickable {
                     width: parent.width
                     id: bitrateTitle
                     text: qsTr("Video bitrate:")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     wrapMode: Text.Wrap
                 }
 
@@ -739,7 +740,7 @@ Flickable {
                     width: parent.width
                     id: bitrateDesc
                     text: qsTr("Lower the bitrate on slower connections. Raise the bitrate to increase image quality.")
-                    font.pointSize: 9
+                    font.pointSize: Theme.fontCaption
                     wrapMode: Text.Wrap
                 }
 
@@ -791,7 +792,7 @@ Flickable {
                     width: parent.width
                     id: windowModeTitle
                     text: qsTr("Display mode")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     wrapMode: Text.Wrap
                     visible: SystemProperties.hasDesktopEnvironment
                 }
@@ -878,7 +879,7 @@ Flickable {
                     width: parent.width
                     hoverEnabled: true
                     text: qsTr("V-Sync")
-                    font.pointSize:  12
+                    font.pointSize: Theme.fontBody
                     checked: StreamingPreferences.enableVsync
                     onCheckedChanged: {
                         StreamingPreferences.enableVsync = checked
@@ -895,7 +896,7 @@ Flickable {
                     width: parent.width
                     hoverEnabled: true
                     text: qsTr("Frame pacing")
-                    font.pointSize:  12
+                    font.pointSize: Theme.fontBody
                     enabled: StreamingPreferences.enableVsync
                     checked: StreamingPreferences.enableVsync && StreamingPreferences.framePacing
                     onCheckedChanged: {
@@ -915,7 +916,7 @@ Flickable {
             width: (parent.width - (parent.leftPadding + parent.rightPadding))
             padding: 12
             title: "<font color=\"skyblue\">" + qsTr("Audio Settings") + "</font>"
-            font.pointSize: 12
+            font.pointSize: Theme.fontBody
 
             Column {
                 anchors.fill: parent
@@ -925,7 +926,7 @@ Flickable {
                     width: parent.width
                     id: resAudioTitle
                     text: qsTr("Audio configuration")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     wrapMode: Text.Wrap
                 }
 
@@ -972,7 +973,7 @@ Flickable {
                     id: audioPcCheck
                     width: parent.width
                     text: qsTr("Mute host PC speakers while streaming")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     checked: !StreamingPreferences.playAudioOnHost
                     onCheckedChanged: {
                         StreamingPreferences.playAudioOnHost = !checked
@@ -988,7 +989,7 @@ Flickable {
                     id: muteOnFocusLossCheck
                     width: parent.width
                     text: qsTr("Mute audio stream when Moonlight is not the active window")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     visible: SystemProperties.hasDesktopEnvironment
                     checked: StreamingPreferences.muteOnFocusLoss
                     onCheckedChanged: {
@@ -1005,7 +1006,7 @@ Flickable {
                     id: streamMicCheck
                     width: parent.width
                     text: qsTr("Stream client microphone to host")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     checked: StreamingPreferences.streamMicToHost
                     onCheckedChanged: {
                         StreamingPreferences.streamMicToHost = checked
@@ -1020,7 +1021,7 @@ Flickable {
                 Label {
                     width: parent.width
                     text: qsTr("Microphone")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     wrapMode: Text.Wrap
                     visible: streamMicCheck.checked
                 }
@@ -1089,7 +1090,7 @@ Flickable {
             width: (parent.width - (parent.leftPadding + parent.rightPadding))
             padding: 12
             title: "<font color=\"skyblue\">" + qsTr("UI Settings") + "</font>"
-            font.pointSize: 12
+            font.pointSize: Theme.fontBody
 
             Column {
                 anchors.fill: parent
@@ -1099,7 +1100,7 @@ Flickable {
                     width: parent.width
                     id: languageTitle
                     text: qsTr("Language")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     wrapMode: Text.Wrap
                 }
 
@@ -1277,7 +1278,7 @@ Flickable {
                     width: parent.width
                     id: uiDisplayModeTitle
                     text: qsTr("GUI display mode")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     wrapMode: Text.Wrap
                     visible: SystemProperties.hasDesktopEnvironment
                 }
@@ -1343,7 +1344,7 @@ Flickable {
             width: (parent.width - (parent.leftPadding + parent.rightPadding))
             padding: 12
             title: "<font color=\"skyblue\">" + qsTr("Input Settings") + "</font>"
-            font.pointSize: 12
+            font.pointSize: Theme.fontBody
 
             Column {
                 anchors.fill: parent
@@ -1354,7 +1355,7 @@ Flickable {
                     hoverEnabled: true
                     width: parent.width
                     text: qsTr("Optimize mouse for remote desktop instead of games")
-                    font.pointSize:  12
+                    font.pointSize: Theme.fontBody
                     checked: StreamingPreferences.absoluteMouseMode
                     onCheckedChanged: {
                         StreamingPreferences.absoluteMouseMode = checked
@@ -1376,7 +1377,7 @@ Flickable {
                         id: captureSysKeysCheck
                         hoverEnabled: true
                         text: qsTr("Capture system keyboard shortcuts")
-                        font.pointSize: 12
+                        font.pointSize: Theme.fontBody
                         enabled: SystemProperties.hasDesktopEnvironment
                         checked: StreamingPreferences.captureSysKeysMode !== StreamingPreferences.CSK_OFF || !SystemProperties.hasDesktopEnvironment
 
@@ -1448,7 +1449,7 @@ Flickable {
                     hoverEnabled: true
                     width: parent.width
                     text: qsTr("Use touchscreen as a virtual trackpad")
-                    font.pointSize:  12
+                    font.pointSize: Theme.fontBody
                     checked: !StreamingPreferences.absoluteTouchMode
                     onCheckedChanged: {
                         StreamingPreferences.absoluteTouchMode = !checked
@@ -1465,7 +1466,7 @@ Flickable {
                     hoverEnabled: true
                     width: parent.width
                     text: qsTr("Swap left and right mouse buttons")
-                    font.pointSize:  12
+                    font.pointSize: Theme.fontBody
                     checked: StreamingPreferences.swapMouseButtons
                     onCheckedChanged: {
                         StreamingPreferences.swapMouseButtons = checked
@@ -1477,7 +1478,7 @@ Flickable {
                     hoverEnabled: true
                     width: parent.width
                     text: qsTr("Reverse mouse scrolling direction")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     checked: StreamingPreferences.reverseScrollDirection
                     onCheckedChanged: {
                         StreamingPreferences.reverseScrollDirection = checked
@@ -1491,7 +1492,7 @@ Flickable {
             width: (parent.width - (parent.leftPadding + parent.rightPadding))
             padding: 12
             title: "<font color=\"skyblue\">" + qsTr("Gamepad Settings") + "</font>"
-            font.pointSize: 12
+            font.pointSize: Theme.fontBody
 
             Column {
                 anchors.fill: parent
@@ -1501,7 +1502,7 @@ Flickable {
                     id: swapFaceButtonsCheck
                     width: parent.width
                     text: qsTr("Swap A/B and X/Y gamepad buttons")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     checked: StreamingPreferences.swapFaceButtons
                     onCheckedChanged: {
                         StreamingPreferences.swapFaceButtons = checked
@@ -1517,7 +1518,7 @@ Flickable {
                     id: singleControllerCheck
                     width: parent.width
                     text: qsTr("Force gamepad #1 always connected")
-                    font.pointSize:  12
+                    font.pointSize: Theme.fontBody
                     checked: !StreamingPreferences.multiController
                     onCheckedChanged: {
                         StreamingPreferences.multiController = !checked
@@ -1535,7 +1536,7 @@ Flickable {
                     hoverEnabled: true
                     width: parent.width
                     text: qsTr("Enable mouse control with gamepads by holding the 'Start' button")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     checked: StreamingPreferences.gamepadMouse
                     onCheckedChanged: {
                         StreamingPreferences.gamepadMouse = checked
@@ -1546,7 +1547,7 @@ Flickable {
                     id: backgroundGamepadCheck
                     width: parent.width
                     text: qsTr("Process gamepad input when Moonlight is in the background")
-                    font.pointSize: 12
+                    font.pointSize: Theme.fontBody
                     visible: SystemProperties.hasDesktopEnvironment
                     checked: StreamingPreferences.backgroundGamepad
                     onCheckedChanged: {
@@ -1566,7 +1567,7 @@ Flickable {
             width: (parent.width - (parent.leftPadding + parent.rightPadding))
             padding: 12
             title: "<font color=\"skyblue\">" + qsTr("Shortcuts") + "</font>"
-            font.pointSize: 12
+            font.pointSize: Theme.fontBody
 
             Column {
                 anchors.fill: parent
@@ -1575,7 +1576,7 @@ Flickable {
                 Label {
                     width: parent.width
                     text: qsTr("Click a shortcut, then press the key combination you want to use. Press Escape to cancel.")
-                    font.pointSize: 11
+                    font.pointSize: Theme.fontSmall
                     wrapMode: Text.Wrap
                     opacity: 0.8
                 }
@@ -1585,7 +1586,7 @@ Flickable {
                     visible: settingsPage.shortcutError !== ""
                     text: settingsPage.shortcutError
                     color: "#e74c3c"
-                    font.pointSize: 11
+                    font.pointSize: Theme.fontSmall
                     wrapMode: Text.Wrap
                 }
 
@@ -1610,7 +1611,7 @@ Flickable {
 
                         Label {
                             text: model.label
-                            font.pointSize: 12
+                            font.pointSize: Theme.fontBody
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
