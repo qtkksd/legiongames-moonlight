@@ -11,7 +11,6 @@
 #ifdef Q_OS_WIN32
 #include <windows.h>
 #include <wincrypt.h>
-#include <sddl.h>
 #elif defined(Q_OS_MACOS)
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
@@ -25,8 +24,17 @@
 
 namespace {
 
+#ifdef LG_STAGING_BUILD
+const char kServiceName[] = "ru.legiongames.moonlight.staging";
+const char kDpapiEntropy[] = "ru.legiongames.moonlight.staging/vault/v1";
+const char kVaultSettingsApplication[] = "MoonlightVaultStaging";
+const char kSecretSchemaName[] = "ru.legiongames.moonlight.staging.vault";
+#else
 const char kServiceName[] = "ru.legiongames.moonlight";
 const char kDpapiEntropy[] = "ru.legiongames.moonlight/vault/v1";
+const char kVaultSettingsApplication[] = "MoonlightVault";
+const char kSecretSchemaName[] = "ru.legiongames.moonlight.vault";
+#endif
 
 QString sanitizeName(const QString &name)
 {
@@ -94,7 +102,7 @@ public:
 
         auto readRegistry = [&]() -> QByteArray {
             QSettings settings(QSettings::UserScope, QStringLiteral("LegionGames"),
-                               QStringLiteral("MoonlightVault"));
+                               QString::fromLatin1(kVaultSettingsApplication));
             return settings.value(registryKey(name)).toByteArray();
         };
 
@@ -199,7 +207,7 @@ public:
         // A second copy in HKCU survives a deleted/redirected AppData file.
         // It is the same DPAPI ciphertext, not plaintext.
         QSettings settings(QSettings::UserScope, QStringLiteral("LegionGames"),
-                           QStringLiteral("MoonlightVault"));
+                           QString::fromLatin1(kVaultSettingsApplication));
         settings.setValue(registryKey(name), blob);
         settings.sync();
 
@@ -207,8 +215,6 @@ public:
         // blob to the current Windows user, and a DACL created during an
         // elevated first run can make the file unreadable on the next normal
         // start. The inherited AppData ACL is sufficient for confidentiality.
-        Q_UNUSED(restrictToCurrentUser);
-
         return true;
     }
 
@@ -216,7 +222,7 @@ public:
     {
         m_error.clear();
         QSettings settings(QSettings::UserScope, QStringLiteral("LegionGames"),
-                           QStringLiteral("MoonlightVault"));
+                           QString::fromLatin1(kVaultSettingsApplication));
         settings.remove(registryKey(name));
         settings.sync();
 
@@ -261,24 +267,6 @@ private:
         entropy.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(kDpapiEntropy));
         entropy.cbData = static_cast<DWORD>(sizeof(kDpapiEntropy) - 1);
         return entropy;
-    }
-
-    static bool restrictToCurrentUser(const QString &path)
-    {
-        // Protected DACL granting full access to the file owner only. This
-        // removes inherited ACEs so other local users cannot read the blob.
-        PSECURITY_DESCRIPTOR sd = nullptr;
-        if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
-                L"D:P(A;;FA;;;OW)", SDDL_REVISION_1, &sd, nullptr)) {
-            return false;
-        }
-
-        const BOOL ok = SetFileSecurityW(reinterpret_cast<LPCWSTR>(path.utf16()),
-                                         DACL_SECURITY_INFORMATION |
-                                             PROTECTED_DACL_SECURITY_INFORMATION,
-                                         sd);
-        LocalFree(sd);
-        return ok != FALSE;
     }
 
     QString m_error;
@@ -550,7 +538,7 @@ private:
     static const SecretSchema *schema()
     {
         static const SecretSchema vaultSchema = {
-            const_cast<gchar *>("ru.legiongames.moonlight.vault"),
+            const_cast<gchar *>(kSecretSchemaName),
             SECRET_SCHEMA_NONE,
             {
                 { "name", SECRET_SCHEMA_ATTRIBUTE_STRING },

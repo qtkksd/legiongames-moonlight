@@ -231,6 +231,7 @@ public:
 
     // LegionGames one-time-code connect flow
     Q_INVOKABLE void startLegionConnect(QString code);
+    Q_INVOKABLE void stopLegionConnect();
 
     void addNewHost(NvAddress address, bool mdns, QString name = QString(), NvAddress mdnsIpv6Address = NvAddress());
 

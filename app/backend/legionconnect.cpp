@@ -18,7 +18,11 @@
 #include <QUrl>
 #include <QtDebug>
 
+#ifdef LG_STAGING_BUILD
+#define LEGION_API_BASE "https://django-stg.legiongames.cell"
+#else
 #define LEGION_API_BASE "https://legiongames.ru"
+#endif
 #define LEGION_CONNECT_URL LEGION_API_BASE "/api/client/connect"
 #define LEGION_PIN_URL LEGION_API_BASE "/api/client/pin"
 #define LEGION_DEFAULT_MANAGEMENT_URL "https://netbird.legiongames.ru"
@@ -44,8 +48,9 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
     m_StaleProfileActive(false),
     m_RemoveIndex(0)
 {
-    // Allow HTTP redirects (e.g. https://legiongames.ru -> www)
-    m_Nam->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
+    // The connect and PIN APIs never redirect. Following a redirect here could
+    // disclose the one-time bearer token or send the code to another host.
+    m_Nam->setRedirectPolicy(QNetworkRequest::ManualRedirectPolicy);
 
     connect(m_Process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
@@ -92,6 +97,7 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
 
         case NetbirdRestoreProfile:
             m_Cleaning = false;
+            m_NetbirdTouched = false;
             m_Stage = Idle;
             break;
 
@@ -205,13 +211,85 @@ void LegionConnect::start(const QString& code)
 void LegionConnect::disconnect()
 {
     // Tear down the session NetBird profile and restore the user's own profile.
-    if (m_Stage != Idle || !m_NetbirdTouched) {
+    if (!m_NetbirdTouched || m_Cleaning) {
         return;
     }
 
+    // Leave the connect state machine before killing an in-flight command.
+    // Otherwise its finished handler may start the next connect stage while we
+    // are trying to tear the same process down.
+    m_Stage = Idle;
     m_Cleaning = true;
+
+    if (m_Process->state() != QProcess::NotRunning) {
+        m_Process->kill();
+        m_Process->waitForFinished(1000);
+    }
+
     emit status(tr("Отключение NetBird..."));
     runNetbird(QStringList() << QStringLiteral("down"), NetbirdDown);
+    if (m_Stage == Idle) {
+        // The executable was missing, so no cleanup command could start.
+        m_Cleaning = false;
+    }
+}
+
+void LegionConnect::shutdown()
+{
+    if (!m_NetbirdTouched) {
+        return;
+    }
+
+    m_Stage = Idle;
+    m_Cleaning = false;
+    if (m_Process->state() != QProcess::NotRunning) {
+        m_Process->kill();
+        m_Process->waitForFinished(1000);
+    }
+
+    const QString exe = findNetbirdExecutable();
+    if (exe.isEmpty()) {
+        m_NetbirdTouched = false;
+        return;
+    }
+
+    // The event loop is already shutting down, so run the same cleanup
+    // sequence synchronously and ignore individual command failures.
+    auto run = [&exe](const QStringList& args) {
+        QProcess process;
+        process.start(exe, args);
+        if (!process.waitForFinished(3000)) {
+            process.kill();
+            process.waitForFinished(1000);
+        }
+        return process.readAllStandardOutput();
+    };
+
+    run(QStringList() << QStringLiteral("down"));
+    parseProfileList(run(QStringList() << QStringLiteral("profile")
+                                       << QStringLiteral("list")
+                                       << QStringLiteral("--show-id")));
+
+    if (m_StaleProfileActive) {
+        const QString target = m_PreviousProfileId.isEmpty()
+                                   ? QStringLiteral("default")
+                                   : m_PreviousProfileId;
+        run(QStringList() << QStringLiteral("profile")
+                          << QStringLiteral("select") << target);
+    }
+
+    for (const QString& id : m_StaleProfileIds) {
+        run(QStringList() << QStringLiteral("profile")
+                          << QStringLiteral("remove") << id);
+    }
+
+    if (!m_PreviousProfileId.isEmpty()) {
+        run(QStringList() << QStringLiteral("profile")
+                          << QStringLiteral("select") << m_PreviousProfileId);
+    }
+
+    m_NetbirdTouched = false;
+    m_SessionProfileId.clear();
 }
 
 void LegionConnect::downloadSetupKeyFromReply(QNetworkReply* reply)
@@ -248,6 +326,17 @@ void LegionConnect::downloadSetupKeyFromReply(QNetworkReply* reply)
     m_ManagementUrl = obj.value(QStringLiteral("management_url")).toString();
     if (m_ManagementUrl.isEmpty()) {
         m_ManagementUrl = QStringLiteral(LEGION_DEFAULT_MANAGEMENT_URL);
+    }
+    const QUrl managementUrl(m_ManagementUrl, QUrl::StrictMode);
+    const QString managementHost = managementUrl.host().toLower();
+    const bool allowedManagementHost =
+        managementHost == QLatin1String("netbird.legiongames.ru") ||
+        managementHost.endsWith(QStringLiteral(".legiongames.cell"));
+    if (!managementUrl.isValid() ||
+        managementUrl.scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) != 0 ||
+        !allowedManagementHost) {
+        fail(tr("Сервер вернул недопустимый адрес NetBird"));
+        return;
     }
 
     // End-of-booking notification deadline (optional). Drives the in-stream
@@ -537,15 +626,11 @@ void LegionConnect::submitPin()
 
         m_PinDone = true;
         m_PinOk = false;
-        if (m_PairingOk) {
-            // The client is already authenticated with the host; don't error the
-            // user out over the server-side relay. Finish (activation is
-            // best-effort and idempotent server-side).
-            qWarning() << "LegionConnect: PIN relay failed after pairing OK — finishing";
-            checkFinished();
-        } else {
-            fail(errorText);
-        }
+        // Pairing alone is not enough: Django must activate the connection and
+        // record the Sunshine PIN before the session can be considered ready.
+        // Otherwise the client can stream while the server still bills/holds a
+        // pending session and cleanup never runs correctly.
+        fail(errorText);
     });
 }
 
@@ -555,16 +640,10 @@ void LegionConnect::checkFinished()
         return;
     }
 
-    // Success is driven by the client<->host pairing (== "authed into PC").
-    // The PIN relay is server-side bookkeeping; once it has settled (success,
-    // failure or timeout) we finish, so the modal progress dialog can never be
-    // left locked at 100% waiting on it.
-    if (m_PairingOk) {
+    // Both sides must agree before the app opens the host. The server-side PIN
+    // relay activates the Django connection and is not optional bookkeeping.
+    if (m_PairingOk && m_PinOk) {
         m_Stage = Idle;
-        if (!m_PinOk) {
-            qWarning() << "LegionConnect: finishing after pairing OK though the PIN"
-                          " relay did not confirm (activation is best-effort)";
-        }
         emit succeeded();
     }
 }
@@ -585,18 +664,23 @@ void LegionConnect::fail(const QString& error)
     qWarning() << "LegionConnect failed:" << error;
 
     const bool touched = m_NetbirdTouched;
-    const bool processRunning = (m_Process->state() != QProcess::NotRunning);
     m_Stage = Idle;
-    if (processRunning) {
+    if (m_Process->state() != QProcess::NotRunning) {
         m_Process->kill();
+        m_Process->waitForFinished(1000);
     }
     emit failed(error);
 
     // Best-effort teardown: remove the session profile and restore the user's
-    // own profile. Skip it while the process is still running (the kill() above
-    // would race with the cleanup); the next connect removes leftovers anyway.
-    if (touched && !processRunning) {
+    // own profile even when the failure happened during a CLI command.
+    if (touched) {
         disconnect();
+        if (m_Stage == Idle && m_Cleaning) {
+            // The teardown could not even start (for example NetBird was
+            // uninstalled while a session was active).
+            m_Cleaning = false;
+            m_NetbirdTouched = false;
+        }
     }
 }
 

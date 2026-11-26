@@ -592,6 +592,10 @@ void ComputerManager::clientSideAttributeUpdated(NvComputer* computer)
 
 void ComputerManager::handleAboutToQuit()
 {
+    if (m_LegionConnect != nullptr) {
+        m_LegionConnect->shutdown();
+    }
+
     QReadLocker lock(&m_Lock);
 
     // Interrupt polling threads immediately, so they
@@ -729,6 +733,13 @@ void ComputerManager::quitRunningApp(NvComputer* computer)
 void ComputerManager::startLegionConnect(QString code)
 {
     m_LegionConnect->start(code);
+}
+
+void ComputerManager::stopLegionConnect()
+{
+    if (m_LegionConnect != nullptr) {
+        m_LegionConnect->disconnect();
+    }
 }
 
 void ComputerManager::stopPollingAsync()

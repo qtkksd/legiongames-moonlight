@@ -71,24 +71,18 @@ QStringList kitDirectories()
         }
     }
 
-    const QString documents =
-        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    if (!documents.isEmpty()) {
-        directories.append(documents + QStringLiteral("/LegionGames"));
-    }
-
-    directories.append(QDir::tempPath() + QStringLiteral("/LegionGames"));
+    // Never put the recovery words in Documents/cloud folders or the system
+    // temp directory. If the install and per-user app-data locations are not
+    // writable, fail and let the UI explain the problem instead of silently
+    // creating an exposed plaintext copy.
     directories.removeDuplicates();
     return directories;
 }
 
 bool writeKitFile(const QString &path, const QByteArray &contents, QString *error)
 {
-    if (QFile::exists(path)) {
-        QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-        QFile::remove(path);
-    }
-
+    // Keep the old file until the replacement is committed. Removing it first
+    // turns a recoverable write failure into permanent loss of the previous kit.
     QSaveFile file(path);
     if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         if (file.write(contents) == contents.size() && file.commit()) {
@@ -258,15 +252,18 @@ RecoveryKit::Result RecoveryKit::write(const QString &handle, const QStringList 
 
 #ifdef Q_OS_WIN32
     if (!restrictToCurrentUser(path)) {
-        // DPAPI protects the vault, but this file is plain text. The app data
-        // directory is already per-user; do not fail a successful write just
-        // because a custom install directory rejects an explicit DACL.
-        qWarning() << "RecoveryKit: failed to set user-only ACL on" << path;
+        QFile::remove(path);
+        result.errorCode = QStringLiteral("recovery_kit_acl_failed");
+        result.message = QStringLiteral("Не удалось ограничить доступ к файлу памятки.");
+        return result;
     }
 #else
     // 0600: owner read/write only.
     if (!QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
-        qWarning() << "RecoveryKit: failed to set 0600 on" << path;
+        QFile::remove(path);
+        result.errorCode = QStringLiteral("recovery_kit_acl_failed");
+        result.message = QStringLiteral("Не удалось ограничить доступ к файлу памятки.");
+        return result;
     }
 #endif
 

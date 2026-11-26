@@ -99,6 +99,7 @@ LegionView {
             return
         }
         stopping = true
+        ComputerManager.stopLegionConnect()
         Api.stopSession(api, session.id)
     }
 
@@ -128,6 +129,7 @@ LegionView {
         function onResponse(op, data) {
             if (op === "session_stop") {
                 sessionView.stopping = false
+                ComputerManager.stopLegionConnect()
                 sessionView.summaryVisible = true
                 if (sessionView.shell) {
                     sessionView.shell.refreshWallet()

@@ -11,6 +11,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QUrl>
+#include <QTimer>
 #include <QtDebug>
 
 #ifndef VERSION_STR
@@ -485,6 +486,19 @@ void AccountClient::startRequest(const Pending &pending)
     QNetworkReply *reply = m_nam->sendCustomRequest(
         request, pending.method.toUtf8(),
         pending.body.isEmpty() ? QByteArray() : pending.body);
+
+    // Qt 5.14 (SteamLink) has no QNetworkRequest transfer timeout. Keep the
+    // same bounded behavior on every target so one stalled request cannot block
+    // refresh waiters and the whole account UI indefinitely.
+    QTimer *timeout = new QTimer(reply);
+    timeout->setSingleShot(true);
+    timeout->setInterval(20000);
+    connect(timeout, &QTimer::timeout, reply, [reply]() {
+        if (reply->isRunning()) {
+            reply->abort();
+        }
+    });
+    timeout->start();
 
     m_pending.insert(reply, pending);
 }

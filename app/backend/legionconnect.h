@@ -29,6 +29,11 @@ public:
     void start(const QString& code);
     void disconnect();
 
+    // Blocking teardown for application shutdown. aboutToQuit is emitted after
+    // the event loop stops dispatching work, so the asynchronous cleanup used
+    // by disconnect() cannot finish there.
+    void shutdown();
+
 signals:
     void status(QString message);
     void progress(int percent);

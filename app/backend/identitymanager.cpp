@@ -111,11 +111,16 @@ void IdentityManager::createCredentials()
     }
 
     if (m_Vault->isAvailable()) {
-        if (m_Vault->save(QStringLiteral(VAULT_CERT), m_CachedPemCert) &&
-            m_Vault->save(QStringLiteral(VAULT_KEY), m_CachedPrivateKey)) {
+        const bool stored =
+            m_Vault->save(QStringLiteral(VAULT_CERT), m_CachedPemCert) &&
+            m_Vault->save(QStringLiteral(VAULT_KEY), m_CachedPrivateKey);
+        if (stored) {
             qInfo() << "Wrote a new GameStream identity to the OS vault";
         }
         else {
+            // Avoid leaving a certificate without its matching private key.
+            m_Vault->remove(QStringLiteral(VAULT_CERT));
+            m_Vault->remove(QStringLiteral(VAULT_KEY));
             qWarning() << "Failed to store the GameStream identity in the OS vault:"
                        << m_Vault->lastErrorCode();
         }
@@ -140,7 +145,15 @@ void IdentityManager::loadCredentials()
         if (haveCert && haveKey) {
             m_CachedPemCert = cert;
             m_CachedPrivateKey = key;
-            return;
+            // Do not feed corrupt vault material into OpenSSL conversion below.
+            // Treat it as an unusable identity and regenerate/re-pair instead.
+            if (!getSslCertificate().isNull() && !getSslKey().isNull()) {
+                return;
+            }
+            m_CachedPemCert.clear();
+            m_CachedPrivateKey.clear();
+            m_CachedSslCert = QSslCertificate();
+            m_CachedSslKey = QSslKey();
         }
     }
 
@@ -154,9 +167,11 @@ void IdentityManager::loadCredentials()
     m_CachedPemCert = legacyCert;
     m_CachedPrivateKey = legacyKey;
 
+    bool migrated = false;
     if (m_Vault->isAvailable()) {
-        if (m_Vault->save(QStringLiteral(VAULT_CERT), legacyCert) &&
-            m_Vault->save(QStringLiteral(VAULT_KEY), legacyKey)) {
+        migrated = m_Vault->save(QStringLiteral(VAULT_CERT), legacyCert) &&
+                   m_Vault->save(QStringLiteral(VAULT_KEY), legacyKey);
+        if (migrated) {
             qInfo() << "Migrated the GameStream identity out of plaintext settings";
         }
         else {
@@ -168,11 +183,13 @@ void IdentityManager::loadCredentials()
         qWarning() << "Vault unavailable: keeping the migrated identity in memory only";
     }
 
-    // Always remove the plaintext copy, even when the vault write failed. A
-    // re-pair is cheaper than leaving a private key on disk.
-    settings.remove(SER_CERT);
-    settings.remove(SER_KEY);
-    settings.sync();
+    // Do not delete the only durable identity until both vault blobs were
+    // written successfully. The next start can retry the migration.
+    if (migrated) {
+        settings.remove(SER_CERT);
+        settings.remove(SER_KEY);
+        settings.sync();
+    }
 }
 
 IdentityManager::IdentityManager()
@@ -216,6 +233,9 @@ IdentityManager::getSslKey()
 
         EVP_PKEY* pk = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr);
         BIO_free(bio);
+        if (pk == nullptr) {
+            return QSslKey();
+        }
 
         bio = BIO_new(BIO_s_mem());
         THROW_BAD_ALLOC_IF_NULL(bio);

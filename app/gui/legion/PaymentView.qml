@@ -59,12 +59,20 @@ LegionView {
     readonly property bool canReissue: Api.hasReissueHandoff(api) && publicId.length > 0
 
     function activate() {
+        pollTimer.stop()
         submitting = false
         reissuing = false
         pollTries = 0
         intentStatus = ""
         intentAmount = ""
         intentBonus = ""
+        publicId = ""
+        handoffUrl = ""
+        handoffAt = 0
+        handoffFresh = false
+        promoCode = ""
+        selectedClubId = -1
+        stage = "form"
         if (shell) {
             shell.refreshWallet()
             if (shell.catalog.length === 0) {
@@ -78,7 +86,7 @@ LegionView {
                 handoffUrl = String(params.handoffUrl)
                 handoffAt = new Date().getTime()
                 refreshHandoffFreshness()
-                openExternal(handoffUrl)
+                payment.openUrl(handoffUrl)
             }
             pollTimer.start()
             return
@@ -112,7 +120,10 @@ LegionView {
         }
         clearError()
         submitting = true
-        Api.createTopup(api, clubId, (amount * 1.0).toFixed(2), promoCode)
+        if (!Api.createTopup(api, clubId, (amount * 1.0).toFixed(2), promoCode)) {
+            submitting = false
+            showError("unsupported_capability", "", "topup")
+        }
     }
 
     function checkStatus() {
@@ -125,7 +136,7 @@ LegionView {
         if (!handoffFresh) {
             return
         }
-        openExternal(handoffUrl)
+        payment.openUrl(handoffUrl)
     }
 
     // The handoff code lives 120 s. Once it is stale, ask the backend for a
@@ -186,7 +197,7 @@ LegionView {
                 payment.refreshHandoffFreshness()
                 payment.stage = "waiting"
                 if (payment.handoffUrl.length > 0) {
-                    payment.openExternal(payment.handoffUrl)
+                    payment.openUrl(payment.handoffUrl)
                 }
                 payment.startPolling()
             }
@@ -204,7 +215,7 @@ LegionView {
                     payment.handoffAt = new Date().getTime()
                     payment.refreshHandoffFreshness()
                     payment.stage = "waiting"
-                    payment.openExternal(url)
+                    payment.openUrl(url)
                     payment.startPolling()
                 }
             }
@@ -219,7 +230,7 @@ LegionView {
                 else {
                     payment.intentStatus = status.length > 0 ? status : "pending"
                     if (payment.pollTries >= 30) {
-                        payment.pollTimer.stop()
+                        pollTimer.stop()
                         payment.stage = "timeout"
                     }
                 }
@@ -239,7 +250,7 @@ LegionView {
                 payment.pollTries = payment.pollTries + 1
                 payment.showError(code, message, op)
                 if (code === "not_found" || payment.pollTries >= 30) {
-                    payment.pollTimer.stop()
+                    pollTimer.stop()
                     payment.stage = "timeout"
                 }
             }

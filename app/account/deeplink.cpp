@@ -12,6 +12,13 @@ namespace {
 
 const char kScheme[] = "legiongames";
 const char kPaymentHost[] = "payment";
+#ifdef LG_STAGING_BUILD
+const char kServerName[] = "ru.legiongames.moonlight.staging.deeplink";
+const char kSharedMemoryKey[] = "ru.legiongames.moonlight.staging.deeplink.v1";
+#else
+const char kServerName[] = "ru.legiongames.moonlight.deeplink";
+const char kSharedMemoryKey[] = "ru.legiongames.moonlight.deeplink.v1";
+#endif
 const int kPaymentHostLength = 7;
 
 bool isPaymentUuid(const QString &value)
@@ -132,12 +139,12 @@ QString DeepLink::paymentIdFromArguments(const QStringList &arguments)
 
 QString DeepLink::serverName()
 {
-    return QStringLiteral("ru.legiongames.moonlight.deeplink");
+    return QString::fromLatin1(kServerName);
 }
 
 QString DeepLink::sharedMemoryKey()
 {
-    return QStringLiteral("ru.legiongames.moonlight.deeplink.v1");
+    return QString::fromLatin1(kSharedMemoryKey);
 }
 
 QString DeepLink::takePendingPaymentId()

@@ -1,4 +1,5 @@
 import QtQuick 2.9
+import QtQuick.Layouts 1.3
 
 import "Theme.js" as Theme
 
@@ -16,5 +17,8 @@ TextEdit {
     color: Theme.text
     font.pointSize: Theme.fontBody
     activeFocusOnPress: true
-    implicitHeight: contentHeight
+    // TextEdit.implicitHeight is read-only. Layouts get the wrapped content
+    // height through the attached property; assigning implicitHeight made the
+    // whole component fail to load and left the product shell blank.
+    Layout.preferredHeight: contentHeight
 }

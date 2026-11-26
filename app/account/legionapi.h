@@ -157,6 +157,7 @@ private:
     void silentFailure(const QString &code, const QString &message);
 
     void loadAccountRecord();
+    QJsonObject loadVaultObject(const QString &key, bool *ok = nullptr) const;
     void persistAccount();
     void storeConsentRecord(const QJsonObject &payload);
     void storeWords(const QStringList &words);
@@ -227,6 +228,7 @@ private:
 
     QString m_pollPublicId;
     int m_pollCount = 0;
+    bool m_pollRequestInFlight = false;
 
     std::function<void()> m_retry;
 };

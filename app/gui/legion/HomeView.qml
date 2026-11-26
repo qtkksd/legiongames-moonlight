@@ -2,6 +2,8 @@ import QtQuick 2.9
 import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 
+import ComputerManager 1.0
+
 import AutoUpdateChecker 1.0
 
 import "Api.js" as Api
@@ -550,6 +552,7 @@ LegionView {
         text: qsTr("Завершить сессию? Списание остановится, остаток баланса сохранится.")
         onAccepted: {
             if (home.session) {
+                ComputerManager.stopLegionConnect()
                 Api.stopSession(home.api, home.session.id)
             }
         }

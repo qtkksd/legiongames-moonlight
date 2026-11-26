@@ -155,7 +155,9 @@ ApplicationWindow {
             // Perform our early initialization before constructing
             // the initial view and pushing it to the StackView
             doEarlyInit()
-            push(startView())
+            var view = startView()
+            console.info("Initial view: " + view)
+            push(view)
         }
 
         onCurrentItemChanged: {
@@ -199,6 +201,35 @@ ApplicationWindow {
         // when Menu is consumed by a focused control.
         Keys.onHangupPressed: {
             settingsButton.clicked()
+        }
+    }
+
+    // If the product shell fails to instantiate, do not leave the user with an
+    // empty window and only the legacy toolbar gear. Show a readable fallback
+    // with the version and a hint to check the application log.
+    Rectangle {
+        anchors.fill: parent
+        color: "#0d0d0d"
+        visible: uiReady && stackView.currentItem === null
+        z: 100
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 10
+
+            Label {
+                text: qsTr("LegionGames UI не загрузился")
+                color: "#ff6b6b"
+                font.pointSize: 22
+                font.bold: true
+            }
+
+            Label {
+                text: qsTr("Версия %1. Откройте журнал приложения и проверьте ошибки QML.")
+                      .arg(SystemProperties.versionString)
+                color: "#aaaaaa"
+                font.pointSize: 14
+            }
         }
     }
 

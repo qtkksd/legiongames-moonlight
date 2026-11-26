@@ -14,6 +14,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonParseError>
 #include <QJsonValue>
 #include <QProcess>
 #include <QRegularExpression>
@@ -358,34 +359,58 @@ void LegionApi::silentFailure(const QString &code, const QString &message)
     emit lastErrorChanged();
 }
 
-void LegionApi::loadAccountRecord()
+QJsonObject LegionApi::loadVaultObject(const QString &key, bool *ok) const
 {
+    if (ok) {
+        *ok = false;
+    }
     if (m_vault == nullptr || !m_vault->isAvailable()) {
-        return;
+        return QJsonObject();
     }
 
+    auto parse = [](const QByteArray &bytes, QJsonObject *object) {
+        QJsonParseError error;
+        const QJsonDocument document = QJsonDocument::fromJson(bytes, &error);
+        if (error.error != QJsonParseError::NoError || !document.isObject() ||
+            document.object().isEmpty()) {
+            return false;
+        }
+        *object = document.object();
+        return true;
+    };
+
+    bool loaded = false;
+    QJsonObject object;
+    const QByteArray primary = m_vault->load(key, &loaded);
+    if (loaded && parse(primary, &object)) {
+        if (ok) {
+            *ok = true;
+        }
+        return object;
+    }
+
+    bool backupLoaded = false;
+    const QByteArray backup = m_vault->load(key + QStringLiteral(".bak"), &backupLoaded);
+    if (backupLoaded && parse(backup, &object)) {
+        qWarning() << "Account: recovered JSON vault record" << key;
+        if (ok) {
+            *ok = true;
+        }
+        return object;
+    }
+
+    return QJsonObject();
+}
+
+void LegionApi::loadAccountRecord()
+{
     bool ok = false;
-    const QByteArray blob = m_vault->load(QString::fromLatin1(kAccountVaultKey), &ok);
+    const QJsonObject record = loadVaultObject(QString::fromLatin1(kAccountVaultKey), &ok);
     if (!ok) {
         return;
     }
-
-    const QJsonObject record = QJsonDocument::fromJson(blob).object();
-    QJsonObject effective = record;
-    if (effective.isEmpty()) {
-        bool backupOk = false;
-        const QByteArray backup = m_vault->load(
-            QString::fromLatin1(kAccountVaultKey) + QStringLiteral(".bak"), &backupOk);
-        if (backupOk) {
-            effective = QJsonDocument::fromJson(backup).object();
-            if (!effective.isEmpty()) {
-                m_vault->save(QString::fromLatin1(kAccountVaultKey), backup);
-                qWarning() << "Account: recovered account record from backup";
-            }
-        }
-    }
-    setHandle(effective.value(QStringLiteral("handle")).toString());
-    setOnboardingStep(effective.value(QStringLiteral("onboarding_step")).toString());
+    setHandle(record.value(QStringLiteral("handle")).toString());
+    setOnboardingStep(record.value(QStringLiteral("onboarding_step")).toString());
 }
 
 void LegionApi::persistAccount()
@@ -518,12 +543,12 @@ QString LegionApi::loadStoredPendingIntent() const
     }
 
     bool ok = false;
-    const QByteArray blob = m_vault->load(QString::fromLatin1(kPendingIntentVaultKey), &ok);
+    const QJsonObject record =
+        loadVaultObject(QString::fromLatin1(kPendingIntentVaultKey), &ok);
     if (!ok) {
         return QString();
     }
 
-    const QJsonObject record = QJsonDocument::fromJson(blob).object();
     const QString publicId = record.value(QStringLiteral("public_id")).toString();
     if (publicId.isEmpty()) {
         return QString();
@@ -602,12 +627,11 @@ QStringList LegionApi::storedWords() const
     }
 
     bool ok = false;
-    const QByteArray blob = m_vault->load(QString::fromLatin1(kWordsVaultKey), &ok);
+    const QJsonObject record = loadVaultObject(QString::fromLatin1(kWordsVaultKey), &ok);
     if (!ok) {
         return QStringList();
     }
 
-    const QJsonObject record = QJsonDocument::fromJson(blob).object();
     QStringList words;
     for (const QJsonValue &value : record.value(QStringLiteral("words")).toArray()) {
         words.append(value.toString());
@@ -1562,6 +1586,7 @@ void LegionApi::resetLocalAccount()
         m_pollTimer->stop();
     }
     m_pollPublicId.clear();
+    m_pollRequestInFlight = false;
     m_pendingPaymentId.clear();
     m_pendingRecoveryTicket.clear();
     m_pendingRecoveryHandle.clear();
@@ -2014,21 +2039,30 @@ void LegionApi::startIntentPolling(const QString &publicId)
         connect(m_pollTimer, &QTimer::timeout, this, &LegionApi::pollIntentOnce);
     }
 
+    if (m_pollTimer != nullptr) {
+        m_pollTimer->stop();
+    }
     m_pollPublicId = publicId;
     m_pollCount = 0;
+    m_pollRequestInFlight = false;
     pollIntentOnce();
 }
 
 void LegionApi::pollIntentOnce()
 {
-    if (m_client == nullptr || m_pollPublicId.isEmpty()) {
+    if (m_client == nullptr || m_pollPublicId.isEmpty() || m_pollRequestInFlight) {
         return;
     }
 
     const QString publicId = m_pollPublicId;
+    m_pollRequestInFlight = true;
     m_client->get(QStringLiteral("/payments/intents/") + publicId, true,
                   CryptoUtil::randomUuid(),
                   [this, publicId](const ApiResult &result) {
+                      m_pollRequestInFlight = false;
+                      if (publicId != m_pollPublicId) {
+                          return;
+                      }
                       if (!result.ok) {
                           if (m_pollTimer != nullptr) {
                               m_pollTimer->stop();

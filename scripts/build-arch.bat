@@ -114,6 +114,21 @@ if defined CI_VERSION (
     set /p VERSION=<%SOURCE_ROOT%\app\version.txt
 )
 
+rem MSI ProductVersion has only three comparable numeric fields. Use the
+rem CI build number in the third field so every installer is a real MajorUpgrade,
+rem rather than a same-version repair of the previous executable.
+if defined GITHUB_RUN_NUMBER (
+    set INSTALLER_VERSION=6.2.%GITHUB_RUN_NUMBER%
+) else (
+    if defined BUILD_NUMBER (
+        set INSTALLER_VERSION=6.2.%BUILD_NUMBER%
+    ) else (
+        rem Local builds keep the human version rather than inventing a number
+        rem that could be lower than the already installed build.
+        set INSTALLER_VERSION=%VERSION%
+    )
+)
+
 rem Use the correct VC tools for the specified architecture
 if /I "%ARCH%" EQU "x64" (
     rem x64 is a special case that doesn't match %PROCESSOR_ARCHITECTURE%

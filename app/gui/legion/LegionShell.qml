@@ -352,7 +352,7 @@ Item {
             }
             else if (op === "session_current" || op === "session_start" ||
                      op === "session_stop" || op === "session_reconnect") {
-                shell.session = Api.sessionOf(data)
+                shell.session = op === "session_stop" ? null : Api.sessionOf(data)
                 if (op !== "session_current") {
                     shell.loadCatalog(false)
                     shell.refreshWallet()

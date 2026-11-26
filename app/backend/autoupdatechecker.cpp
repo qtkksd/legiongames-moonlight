@@ -247,6 +247,8 @@ void AutoUpdateChecker::clearUpdateState()
     m_updateAvailable = false;
     m_updateVersion.clear();
     m_updateUrl.clear();
+    m_HasPendingAsset = false;
+    m_PendingAsset = UpdateAsset();
     emit updateStateChanged();
 }
 
