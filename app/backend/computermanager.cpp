@@ -730,9 +730,9 @@ void ComputerManager::quitRunningApp(NvComputer* computer)
     QThreadPool::globalInstance()->start(quit);
 }
 
-void ComputerManager::startLegionConnect(QString code)
+void ComputerManager::startLegionConnect(QString code, QString proof)
 {
-    m_LegionConnect->start(code);
+    m_LegionConnect->start(code, proof);
 }
 
 void ComputerManager::stopLegionConnect()

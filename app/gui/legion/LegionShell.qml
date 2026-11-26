@@ -86,10 +86,13 @@ Item {
 
     // Cache-first data. Views render the last snapshot immediately and only
     // revalidate after the short TTL. Mutations use force=true to invalidate.
-    readonly property int catalogCacheTtlMs: 15000
-    readonly property int clubCacheTtlMs: 30000
-    readonly property int walletCacheTtlMs: 15000
-    readonly property int sessionCacheTtlMs: 10000
+    // Availability changes quickly at a club. Keep the display window short
+    // (the server still re-checks every mutation); a long club TTL made the
+    // list and the detail page disagree for up to 45 seconds.
+    readonly property int catalogCacheTtlMs: 5000
+    readonly property int clubCacheTtlMs: 10000
+    readonly property int walletCacheTtlMs: 10000
+    readonly property int sessionCacheTtlMs: 5000
     readonly property int queueCacheTtlMs: 3000
 
     property double catalogFetchedAt: 0
@@ -107,6 +110,15 @@ Item {
     property bool walletDirty: false
     property bool sessionDirty: false
     property bool queueDirty: false
+
+    // A current-session/queue read is a snapshot. If a mutation completes
+    // while the read is in flight, the mutation is newer and the snapshot
+    // must be discarded even if a follow-up refresh fails. The read captures
+    // the mutation sequence at start; each mutation completion bumps it.
+    property int sessionMutationSeq: 0
+    property int sessionReadMutationSeq: 0
+    property int queueMutationSeq: 0
+    property int queueReadMutationSeq: 0
 
     // Navigation
     property string section: "home"
@@ -321,6 +333,7 @@ Item {
                 (Date.now() - sessionFetchedAt) < sessionCacheTtlMs) {
             return false
         }
+        sessionReadMutationSeq = sessionMutationSeq
         sessionInFlight = true
         if (!Api.getCurrentSession(api)) {
             sessionInFlight = false
@@ -340,6 +353,7 @@ Item {
                 (Date.now() - queueFetchedAt) < queueCacheTtlMs) {
             return false
         }
+        queueReadMutationSeq = queueMutationSeq
         queueInFlight = true
         if (!Api.getQueue(api)) {
             queueInFlight = false
@@ -524,6 +538,16 @@ Item {
                 }
             }
             else if (op === "session_current") {
+                if (shell.sessionReadMutationSeq !== shell.sessionMutationSeq) {
+                    // A start/stop/reconnect/claim completed after this read
+                    // started. Its payload is authoritative; do not let the
+                    // older snapshot overwrite it. The read is now settled,
+                    // so clear the in-flight guard without scheduling a
+                    // refresh that could fail and preserve stale data.
+                    shell.sessionInFlight = false
+                    shell.sessionDirty = false
+                    return
+                }
                 shell.sessionInFlight = false
                 shell.sessionFetchedAt = Date.now()
                 shell.session = Api.sessionOf(data)
@@ -534,17 +558,24 @@ Item {
             }
             else if (op === "session_start" || op === "session_stop" ||
                      op === "session_reconnect") {
-                if (shell.sessionInFlight) {
-                    // Do not let an older current-session response overwrite
-                    // this mutation; refresh once it settles.
-                    shell.sessionDirty = true
-                }
+                shell.sessionMutationSeq += 1
+                shell.sessionDirty = false
                 shell.sessionFetchedAt = Date.now()
                 shell.session = op === "session_stop" ? null : Api.sessionOf(data)
+                // If a read is in flight, keep its guard until the reply
+                // arrives; that reply will be discarded by the sequence
+                // check above.
                 shell.loadCatalog(false, true)
                 shell.refreshWallet(true)
             }
             else if (op === "queue") {
+                if (shell.queueReadMutationSeq !== shell.queueMutationSeq) {
+                    // A join/leave/claim completed after this read started.
+                    // Keep the mutation result and discard the old snapshot.
+                    shell.queueInFlight = false
+                    shell.queueDirty = false
+                    return
+                }
                 shell.queueInFlight = false
                 shell.queueFetchedAt = Date.now()
                 shell.queueEntry = Api.entryOf(data)
@@ -554,20 +585,19 @@ Item {
                 }
             }
             else if (op === "queue_join" || op === "queue_leave") {
-                if (shell.queueInFlight) {
-                    shell.queueDirty = true
-                }
+                shell.queueMutationSeq += 1
+                shell.queueDirty = false
                 shell.queueFetchedAt = Date.now()
                 shell.queueEntry = Api.entryOf(data)
                 shell.loadCatalog(false, true)
             }
             else if (op === "queue_claim") {
-                if (shell.queueInFlight) {
-                    shell.queueDirty = true
-                }
-                if (shell.sessionInFlight) {
-                    shell.sessionDirty = true
-                }
+                // Claim creates a session and clears the queue entry in one
+                // server transaction. Treat both projections as mutations.
+                shell.queueMutationSeq += 1
+                shell.sessionMutationSeq += 1
+                shell.queueDirty = false
+                shell.sessionDirty = false
                 shell.queueFetchedAt = Date.now()
                 shell.queueEntry = null
                 shell.sessionFetchedAt = Date.now()

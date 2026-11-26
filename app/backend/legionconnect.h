@@ -26,7 +26,7 @@ class LegionConnect : public QObject
 public:
     explicit LegionConnect(ComputerManager* manager, QObject* parent = nullptr);
 
-    void start(const QString& code);
+    void start(const QString& code, const QString& proof = QString());
     void disconnect();
 
     // Blocking teardown for application shutdown. aboutToQuit is emitted after
@@ -80,6 +80,7 @@ private:
     QProcess* m_Process;
     Stage m_Stage;
     QString m_Code;
+    QString m_Proof;
 
     QString m_SetupKey;
     QString m_ManagementUrl;

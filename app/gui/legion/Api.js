@@ -13,7 +13,8 @@
 //   logout, confirmWordsSaved, reissueWords, reprintRecoveryKit, recoverComplete,
 //   refreshMe, getClubs, getClub, getWallet, createTopup, pollIntent,
 //   reissueHandoff, startSession, getCurrentSession, stopSession,
-//   extendSession, reconnectSession, getQueue, joinQueue, leaveQueue, claimQueue,
+//   extendSession, reconnectSession, connectProof, getQueue, joinQueue,
+//   leaveQueue, claimQueue,
 //   getLegalDocuments, deleteAccount, openExternal, openLogFolder,
 //   retryFailedStep
 // Signals consumed by views:
@@ -217,6 +218,15 @@ function extendSession(api, id, amount) {
 
 function reconnectSession(api, id) {
     return call1(api, "reconnectSession", id)
+}
+
+// Proof for POST /api/client/connect. The server requires it when the
+// connection belongs to a registered app device.
+function connectProof(api, code) {
+    if (!has(api, "connectProof")) {
+        return ""
+    }
+    return String(api.connectProof(code) || "")
 }
 
 // ---- queue --------------------------------------------------------------
@@ -453,7 +463,9 @@ function isClubOpen(club) {
     if (club.schedule && club.schedule.closed === true) {
         return false
     }
-    return club.status === "available"
+    // `full` is a sold-out operating club, not a closed one. It must remain
+    // queueable; play is separately gated by free_units > 0.
+    return club.status === "available" || club.status === "full"
 }
 
 function traceReason(club, stale, balance) {
@@ -472,13 +484,13 @@ function traceReason(club, stale, balance) {
     if (club.status === "offline") {
         return "Клуб недоступен."
     }
-    if (Number(club.free_units || 0) <= 0) {
-        return "Свободных компьютеров нет. Встаньте в очередь."
-    }
     var minutePrice = Number(club.price_per_minute || 0)
     if (Number(balance || 0) <= 0 ||
             (minutePrice > 0 && Number(balance || 0) < minutePrice)) {
         return "Недостаточно средств. Пополните баланс."
+    }
+    if (Number(club.free_units || 0) <= 0) {
+        return "Свободных компьютеров нет. Встаньте в очередь."
     }
     return ""
 }
@@ -619,7 +631,17 @@ function errorText(code, message) {
         text = "Обновите приложение, чтобы продолжить."
         break
     case "club_available":
-        text = "Клуб уже недоступен. Выберите другой."
+    case "club_unavailable":
+        text = "Клуб сейчас недоступен. Обновите список или выберите другой."
+        break
+    case "club_full":
+        text = "Свободных компьютеров нет. Встаньте в очередь."
+        break
+    case "queue_not_notified":
+        text = "Очередь ещё не подошла."
+        break
+    case "queue_deadline_expired":
+        text = "Время подтверждения очереди истекло."
         break
     case "session_limit_reached":
         text = "У вас уже есть активная сессия."

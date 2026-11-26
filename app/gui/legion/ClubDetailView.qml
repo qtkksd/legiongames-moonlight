@@ -62,6 +62,16 @@ LegionView {
                                      !joining && !serverBusy
     readonly property string blockedReason: club ? Api.traceReason(club, stale, balance) : ""
 
+    // The primary button is either "play", "queue" or "top up". Only the
+    // first two actions have a policy gate; a top-up must remain available
+    // even when the club is closed or the data is stale. Disabling the button
+    // when its own gate rejects the click removes the silent no-op: the
+    // reason is already shown in `blockedReason` above it.
+    readonly property bool primaryIsStart: freeUnits > 0 && enoughForMinute
+    readonly property bool primaryIsQueue: freeUnits <= 0 && hasFunds
+    readonly property bool primaryBlocked: (primaryIsStart && !canPlay) ||
+                                           (primaryIsQueue && !canQueue)
+
     function activate() {
         starting = false
         joining = false
@@ -104,7 +114,14 @@ LegionView {
     }
 
     function startSession() {
+        if (starting || serverBusy) {
+            return
+        }
         if (!canPlay) {
+            showError("client_blocked",
+                      blockedReason.length > 0 ? blockedReason
+                                               : qsTr("Игра сейчас недоступна."),
+                      "session_start")
             return
         }
         clearError()
@@ -116,7 +133,14 @@ LegionView {
     }
 
     function joinQueue() {
+        if (joining || serverBusy) {
+            return
+        }
         if (!canQueue) {
+            showError("client_blocked",
+                      blockedReason.length > 0 ? blockedReason
+                                               : qsTr("Очередь сейчас недоступна."),
+                      "queue_join")
             return
         }
         clearError()
@@ -431,7 +455,8 @@ LegionView {
                     LegionButton {
                         id: playButton
                         kind: "primary"
-                        enabled: !detail.serverBusy && !detail.starting && !detail.joining
+                        enabled: !detail.serverBusy && !detail.starting &&
+                                 !detail.joining && !detail.primaryBlocked
                         focus: detail.canPlay || detail.canQueue
                         text: {
                             if (detail.freeUnits > 0) {

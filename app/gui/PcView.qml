@@ -491,7 +491,16 @@ CenteredGridView {
                 connecting = true
                 connectCodeStatus.color = "#f0a500"
                 connectCodeStatus.text = qsTr("Проверка кода...")
-                ComputerManager.startLegionConnect(connectCodeField.text)
+                var proof = ""
+                try {
+                    if (typeof legionApi !== "undefined" && legionApi.connectProof) {
+                        proof = String(legionApi.connectProof(connectCodeField.text) || "")
+                    }
+                }
+                catch (error) {
+                    proof = ""
+                }
+                ComputerManager.startLegionConnect(connectCodeField.text, proof)
             }
         }
 

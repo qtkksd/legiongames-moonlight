@@ -230,7 +230,7 @@ public:
     Q_INVOKABLE void addNewHostManually(QString address);
 
     // LegionGames one-time-code connect flow
-    Q_INVOKABLE void startLegionConnect(QString code);
+    Q_INVOKABLE void startLegionConnect(QString code, QString proof = QString());
     Q_INVOKABLE void stopLegionConnect();
 
     void addNewHost(NvAddress address, bool mdns, QString name = QString(), NvAddress mdnsIpv6Address = NvAddress());

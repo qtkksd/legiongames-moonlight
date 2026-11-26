@@ -81,8 +81,15 @@ LegionView {
         connectError = ""
         connectProgress = 0
         connectStage = qsTr("Проверяем код подключения…")
+        var proof = Api.connectProof(api, code)
+        if (proof.length === 0) {
+            connectStage = ""
+            connectError = qsTr("Не удалось подтвердить устройство. Перезапустите приложение.")
+            connecting = false
+            return
+        }
         connecting = true
-        ComputerManager.startLegionConnect(code)
+        ComputerManager.startLegionConnect(code, proof)
     }
 
     function openComputerList() {

@@ -165,7 +165,7 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
     });
 }
 
-void LegionConnect::start(const QString& code)
+void LegionConnect::start(const QString& code, const QString& proof)
 {
     if (m_Stage != Idle) {
         emit failed(tr("Подключение уже выполняется"));
@@ -173,6 +173,7 @@ void LegionConnect::start(const QString& code)
     }
 
     m_Code = code.trimmed();
+    m_Proof = proof.trimmed();
     if (m_Code.isEmpty()) {
         emit failed(tr("Введите код"));
         return;
@@ -201,6 +202,11 @@ void LegionConnect::start(const QString& code)
     QNetworkRequest request{QUrl(QStringLiteral(LEGION_CONNECT_URL))};
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
+    if (!m_Proof.isEmpty()) {
+        // Binds the one-time code to the registered app device, so a leaked
+        // code alone cannot fetch the NetBird setup key or PC address.
+        request.setRawHeader("X-Device-Proof", m_Proof.toLatin1());
+    }
 
     QNetworkReply* reply = m_Nam->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
