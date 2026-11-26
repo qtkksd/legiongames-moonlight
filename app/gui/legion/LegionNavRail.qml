@@ -3,7 +3,8 @@ import QtQuick.Controls 2.2
 
 import "Theme.js" as Theme
 
-// Persistent section rail: Главная, Клубы, Кошелёк, Аккаунт, Настройки.
+// Persistent section rail: Главная, Сессии, Компьютеры, Клубы, Кошелёк,
+// Аккаунт, Настройки. Streaming preferences live inside Settings.
 //
 // Badges only report server state (active session, queue position), never a
 // client-side guess. Focus enters with Menu and leaves with Right/Escape so the
@@ -47,11 +48,11 @@ Rectangle {
             model: [
                 { key: "home", title: qsTr("Главная") },
                 { key: "sessions", title: qsTr("Сессии") },
+                { key: "computers", title: qsTr("Компьютеры") },
                 { key: "clubs", title: qsTr("Клубы") },
                 { key: "wallet", title: qsTr("Кошелёк") },
                 { key: "account", title: qsTr("Аккаунт") },
-                { key: "settings", title: qsTr("Настройки") },
-                { key: "stream", title: qsTr("Трансляция") }
+                { key: "settings", title: qsTr("Настройки") }
             ]
 
             delegate: Item {

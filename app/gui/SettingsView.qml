@@ -42,10 +42,7 @@ Flickable {
     contentHeight: settingsColumn1.height > settingsColumn2.height ? settingsColumn1.height : settingsColumn2.height
 
     ScrollBar.vertical: Legion.LegionScrollBar {
-        anchors {
-            left: parent.right
-            leftMargin: -10
-        }
+        anchors.right: parent.right
     }
 
     function isChildOfFlickable(item) {

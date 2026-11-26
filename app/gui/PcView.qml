@@ -9,6 +9,8 @@ import StreamingPreferences 1.0
 import SystemProperties 1.0
 import SdlGamepadKeyNavigation 1.0
 
+import "legion" as Legion
+
 CenteredGridView {
     property ComputerModel computerModel : createModel()
 
@@ -677,5 +679,5 @@ CenteredGridView {
         }
     }
 
-    ScrollBar.vertical: ScrollBar {}
+    ScrollBar.vertical: Legion.LegionScrollBar { }
 }

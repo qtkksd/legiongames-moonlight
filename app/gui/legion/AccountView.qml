@@ -96,6 +96,7 @@ LegionView {
 
     ScrollView {
         contentWidth: availableWidth
+        rightPadding: Theme.scrollbarGutter
         anchors.top: header.bottom
         anchors.topMargin: Theme.spaceL
         anchors.left: parent.left

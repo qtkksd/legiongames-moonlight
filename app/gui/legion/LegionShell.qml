@@ -162,6 +162,9 @@ Item {
         else if (key === "sessions") {
             setPage("qrc:/gui/legion/SessionsView.qml", {})
         }
+        else if (key === "computers") {
+            setPage("qrc:/gui/legion/ComputersView.qml", {})
+        }
         else if (key === "wallet") {
             setPage("qrc:/gui/legion/WalletView.qml", {})
         }
@@ -170,9 +173,6 @@ Item {
         }
         else if (key === "settings") {
             setPage("qrc:/gui/legion/LegionSettingsView.qml", {})
-        }
-        else if (key === "stream") {
-            setPage("qrc:/gui/legion/StreamSettingsView.qml", {})
         }
         else {
             section = "home"

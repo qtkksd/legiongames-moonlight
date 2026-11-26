@@ -23,6 +23,13 @@ var textOnAccent = "#ffffff"
 var accent = "#c92a2a"
 var accentHover = "#a01f1f"
 var accentPressed = "#8f1c1c"
+
+// Scrollbar: a thin, always-visible rail. The gutter is reserved by
+// ScrollView.rightPadding / Flickable margins so cards never sit under it.
+var scrollbarWidth = 10
+var scrollbarGutter = 12
+var scrollbarThumb = "#5a5a63"
+var scrollbarThumbHover = accent
 var success = "#7fd18b"
 var warning = "#f0a500"
 var error = "#ff6b6b"

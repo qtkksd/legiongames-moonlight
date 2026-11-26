@@ -103,11 +103,12 @@ LegionView {
         anchors.right: parent.right
         anchors.margins: Theme.spaceXl
         title: qsTr("Настройки")
-        subtitle: qsTr("Приложение и аккаунт")
+        subtitle: qsTr("Приложение, стриминг и аккаунт")
     }
 
     ScrollView {
         contentWidth: availableWidth
+        rightPadding: Theme.scrollbarGutter
         anchors.top: header.bottom
         anchors.topMargin: Theme.spaceL
         anchors.left: parent.left
@@ -259,14 +260,51 @@ LegionView {
 
                         LegionButton {
                             kind: "secondary"
-                            text: qsTr("Компьютеры и код подключения")
-                            onClicked: {
-                                try {
-                                    window.navigateTo("qrc:/gui/PcView.qml", PcView)
-                                }
-                                catch (error) {
-                                }
-                            }
+                            text: qsTr("Компьютеры")
+                            onClicked: settings.goSection("computers")
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+                }
+            }
+
+            // ---- streaming ----------------------------------------------
+            NeonFrame {
+                width: parent.width
+                height: streamColumn.implicitHeight + Theme.spaceXl * 2
+
+                ColumnLayout {
+                    id: streamColumn
+                    anchors.fill: parent
+                    anchors.margins: Theme.spaceXl
+                    spacing: Theme.spaceS
+
+                    Label {
+                        text: qsTr("Стриминг")
+                        color: Theme.text
+                        font.pointSize: Theme.fontTitle
+                        font.bold: true
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Качество, звук, управление и хост.")
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontBody
+                        wrapMode: Text.Wrap
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceM
+
+                        LegionButton {
+                            id: streamSettingsButton
+                            kind: "secondary"
+                            text: qsTr("Открыть параметры стриминга")
+                            onClicked: settings.go(
+                                           "qrc:/gui/legion/StreamSettingsView.qml", {})
                         }
 
                         Item { Layout.fillWidth: true }
@@ -310,7 +348,7 @@ LegionView {
 
                     Label {
                         Layout.fillWidth: true
-                        text: qsTr("Соединение с сервером LegionGames. Трансляция идёт через NetBird и " +
+                        text: qsTr("Соединение с сервером LegionGames. Стриминг идёт через NetBird и " +
                                    "не зависит от этого статуса.")
                         color: Theme.textMuted
                         font.pointSize: Theme.fontBody

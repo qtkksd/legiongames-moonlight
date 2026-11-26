@@ -6,6 +6,8 @@ import AppModel 1.0
 import ComputerManager 1.0
 import SdlGamepadKeyNavigation 1.0
 
+import "legion" as Legion
+
 CenteredGridView {
     property int computerIndex
     property AppModel appModel : createModel()
@@ -374,5 +376,5 @@ CenteredGridView {
         onAccepted: quitApp()
     }
 
-    ScrollBar.vertical: ScrollBar {}
+    ScrollBar.vertical: Legion.LegionScrollBar { }
 }

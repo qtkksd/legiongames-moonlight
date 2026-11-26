@@ -112,12 +112,13 @@ LegionView {
         contentHeight: panel.height
         clip: true
         boundsBehavior: Flickable.OvershootBounds
-        ScrollBar.vertical: ScrollBar {}
+        ScrollBar.vertical: LegionScrollBar { }
 
         NeonFrame {
             id: panel
-            width: Math.min(parent.width, 860)
+            width: Math.min(parent.width - Theme.scrollbarGutter, 860)
             anchors.horizontalCenter: parent.horizontalCenter
+            anchors.horizontalCenterOffset: -Theme.scrollbarGutter / 2
             height: column.implicitHeight + Theme.spaceXxl * 2
             highlighted: true
             flicker: true

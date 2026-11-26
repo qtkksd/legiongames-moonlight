@@ -53,6 +53,21 @@ QVariant ComputerModel::data(const QModelIndex& index, int role) const
         return computer->state == NvComputer::CS_UNKNOWN;
     case ServerSupportedRole:
         return computer->isSupportedServerVersion;
+    case AddressRole: {
+        QString address = computer->activeAddress.toString();
+        if (address.isEmpty()) {
+            address = computer->localAddress.toString();
+        }
+        if (address.isEmpty()) {
+            address = computer->manualAddress.toString();
+        }
+        return address;
+    }
+    case UuidRole:
+        return computer->uuid;
+    case LegionRole:
+        return isLegionNetbirdAddress(computer->activeAddress) ||
+               isLegionNetbirdAddress(computer->localAddress);
     case DetailsRole: {
         QString state, pairState;
 
@@ -120,6 +135,9 @@ QHash<int, QByteArray> ComputerModel::roleNames() const
     names[WakeableRole] = "wakeable";
     names[StatusUnknownRole] = "statusUnknown";
     names[ServerSupportedRole] = "serverSupported";
+    names[AddressRole] = "address";
+    names[UuidRole] = "uuid";
+    names[LegionRole] = "legion";
     names[DetailsRole] = "details";
 
     return names;
@@ -158,6 +176,19 @@ void ComputerModel::deleteComputer(int computerIndex)
     m_Computers.removeAt(computerIndex);
 
     endRemoveRows();
+}
+
+void ComputerModel::deleteComputerByUuid(const QString &uuid)
+{
+    if (uuid.isEmpty()) {
+        return;
+    }
+    for (int i = 0; i < m_Computers.count(); ++i) {
+        if (m_Computers[i]->uuid == uuid) {
+            deleteComputer(i);
+            return;
+        }
+    }
 }
 
 void ComputerModel::removeDiscoveredComputers()

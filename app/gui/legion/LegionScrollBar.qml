@@ -3,27 +3,31 @@ import QtQuick.Controls 2.2
 
 import "Theme.js" as Theme
 
-// Product scrollbar: a full-height track with a proportional handle. It fades
-// away when the pointer is far, appears gray on hover and turns red while
-// dragging.
+// Product scrollbar: a thin rail pinned to the right edge. It stays visible
+// (gray) when the content is scrollable and turns red while the pointer is
+// over it or the handle is being dragged. The pages reserve
+// Theme.scrollbarGutter so this rail never sits on top of content.
 ScrollBar {
     id: control
 
     policy: ScrollBar.AsNeeded
-    width: 8
+    width: Theme.scrollbarWidth
     padding: 0
 
-    opacity: (hovered || pressed || active) ? 1.0 : 0.0
-    Behavior on opacity {
-        NumberAnimation { duration: 160 }
-    }
+    hoverEnabled: true
 
     contentItem: Rectangle {
-        implicitWidth: 6
-        width: 6
+        implicitWidth: 4
+        width: 4
         height: Math.max(48, control.size * control.availableHeight)
-        radius: 3
-        color: (control.pressed || control.hovered) ? Theme.accent : Theme.lineStrong
+        radius: 2
+        color: (control.hovered || control.pressed)
+               ? Theme.scrollbarThumbHover
+               : Theme.scrollbarThumb
+
+        Behavior on color {
+            ColorAnimation { duration: 120 }
+        }
     }
 
     background: Rectangle {
@@ -31,6 +35,6 @@ ScrollBar {
         height: control.availableHeight
         anchors.horizontalCenter: parent.horizontalCenter
         color: Theme.line
-        opacity: 0.5
+        opacity: 0.4
     }
 }

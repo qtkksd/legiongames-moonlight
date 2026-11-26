@@ -36,6 +36,20 @@ LegionView {
     readonly property string clubName: session && shell ? shell.clubName(session.club_id) : qsTr("Клуб")
     readonly property var walletRow: session && shell ? shell.walletFor(session.club_id) : null
     readonly property string code: session && session.code ? String(session.code) : ""
+    readonly property string pcLabel: {
+        if (!session || !session.pc) {
+            return qsTr("Компьютер: готовится")
+        }
+        if (session.pc.pc_number !== undefined &&
+                session.pc.pc_number !== null &&
+                String(session.pc.pc_number).length > 0) {
+            return qsTr("Компьютер: ПК №%1").arg(session.pc.pc_number)
+        }
+        if (session.pc.ip) {
+            return qsTr("Компьютер: %1").arg(session.pc.ip)
+        }
+        return qsTr("Компьютер: готовится")
+    }
 
     function activate() {
         summaryVisible = false
@@ -93,12 +107,9 @@ LegionView {
     }
 
     function openComputerList() {
-        try {
-            stackView.push("qrc:/gui/PcView.qml")
-        }
-        catch (error) {
-            connectError = qsTr("Не удалось открыть список компьютеров.")
-        }
+        // The product shell owns navigation; main.qml's StackView id is not
+        // visible from this page.
+        goSection("computers")
     }
 
     function stop() {
@@ -233,6 +244,7 @@ LegionView {
 
     ScrollView {
         contentWidth: availableWidth
+        rightPadding: Theme.scrollbarGutter
         anchors.top: header.bottom
         anchors.topMargin: Theme.spaceL
         anchors.left: parent.left
@@ -325,10 +337,7 @@ LegionView {
                             spacing: Theme.spaceXs
 
                             Label {
-                                text: sessionView.session && sessionView.session.pc &&
-                                      sessionView.session.pc.name
-                                      ? qsTr("Компьютер: %1").arg(sessionView.session.pc.name)
-                                      : qsTr("Компьютер: готовится")
+                                text: sessionView.pcLabel
                                 color: Theme.text
                                 font.pointSize: Theme.fontBody
                             }

@@ -16,6 +16,9 @@ class ComputerModel : public QAbstractListModel
         WakeableRole,
         StatusUnknownRole,
         ServerSupportedRole,
+        AddressRole,
+        UuidRole,
+        LegionRole,
         DetailsRole
     };
 
@@ -32,6 +35,7 @@ public:
     virtual QHash<int, QByteArray> roleNames() const override;
 
     Q_INVOKABLE void deleteComputer(int computerIndex);
+    Q_INVOKABLE void deleteComputerByUuid(const QString &uuid);
 
     // Remove every discovered Legion PC (host on the Legion NetBird subnet),
     // updating the model so no stale/dangling entries remain. Used at the start

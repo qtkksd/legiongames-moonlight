@@ -149,10 +149,11 @@ LegionView {
             model: clubs.rows
             currentIndex: 0
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar {}
+            rightMargin: Theme.scrollbarGutter
+            ScrollBar.vertical: LegionScrollBar { }
 
             delegate: ClubCard {
-                width: clubList.width
+                width: clubList.width - Theme.scrollbarGutter
                 height: 124
                 club: modelData
                 stale: clubs.stale
