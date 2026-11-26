@@ -154,7 +154,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: qsTr("LegionGames")
                         color: Theme.accent
-                        font.pointSize: Theme.fontTitle + 2
+                        font.pointSize: Theme.fontTitle
                         font.bold: true
                     }
 
@@ -162,7 +162,7 @@ LegionView {
                         text: onboarding.reconsent ? qsTr("Документы обновились")
                                                    : qsTr("Шаг 1 из 2")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 1
+                        font.pointSize: Theme.fontSmall
                     }
                 }
 
@@ -174,7 +174,7 @@ LegionView {
                              ? qsTr("Примите обновлённые документы")
                              : qsTr("Создание аккаунта"))
                     color: Theme.text
-                    font.pointSize: Theme.fontHero + 4
+                    font.pointSize: Theme.fontHero
                     font.bold: true
                     wrapMode: Text.Wrap
                 }
@@ -188,7 +188,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: qsTr("Аккаунт %1 уже создан на этом ПК.").arg(onboarding.handle)
                         color: Theme.text
-                        font.pointSize: Theme.fontBody + 2
+                        font.pointSize: Theme.fontSubtitle
                         wrapMode: Text.Wrap
                     }
 
@@ -197,7 +197,7 @@ LegionView {
                         text: qsTr("Ключ устройства не загрузился. Восстановите доступ по восьми " +
                                    "словам — новый аккаунт создавать не нужно.")
                         color: Theme.warning
-                        font.pointSize: Theme.fontBody + 2
+                        font.pointSize: Theme.fontSubtitle
                         wrapMode: Text.Wrap
                     }
 
@@ -233,7 +233,7 @@ LegionView {
                     text: qsTr("Аккаунт создаётся в этом браузере. Логина и пароля нет — " +
                                "только ключ устройства и 8 слов восстановления.")
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontBody + 3
+                    font.pointSize: Theme.fontSubtitle
                     wrapMode: Text.Wrap
                 }
 
@@ -266,7 +266,7 @@ LegionView {
                         visible: onboarding.words.length > 0
                         text: qsTr("Ваши слова восстановления:")
                         color: Theme.text
-                        font.pointSize: Theme.fontBody + 2
+                        font.pointSize: Theme.fontSubtitle
                         font.bold: true
                     }
 
@@ -323,7 +323,7 @@ LegionView {
                             text: qsTr("Я принимаю <a href=\"%1\">пользовательское соглашение</a>.")
                                       .arg(onboarding.agreementDocUrl)
                             color: Theme.text
-                            font.pointSize: Theme.fontBody + 3
+                            font.pointSize: Theme.fontSubtitle
                             wrapMode: Text.Wrap
                             onLinkActivated: onboarding.openUrl(link)
                         }
@@ -349,7 +349,7 @@ LegionView {
                                       .arg(onboarding.policyDocUrl)
                                       .arg(onboarding.consentDocUrl)
                             color: Theme.text
-                            font.pointSize: Theme.fontBody + 3
+                            font.pointSize: Theme.fontSubtitle
                             wrapMode: Text.Wrap
                             onLinkActivated: onboarding.openUrl(link)
                         }
@@ -359,7 +359,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: onboarding.ageNoticeText
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 2
+                        font.pointSize: Theme.fontBody
                         wrapMode: Text.Wrap
                     }
 
@@ -386,7 +386,7 @@ LegionView {
                     Label {
                         text: qsTr("Имя этого компьютера")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 2
+                        font.pointSize: Theme.fontBody
                     }
 
                     TextField {
@@ -394,7 +394,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: onboarding.deviceLabel
                         maximumLength: 32
-                        font.pointSize: Theme.fontBody + 2
+                        font.pointSize: Theme.fontSubtitle
                         onTextChanged: onboarding.deviceLabel = text
                         Keys.onReturnPressed: onboarding.submit()
                         Keys.onEnterPressed: onboarding.submit()
@@ -435,7 +435,7 @@ LegionView {
                         visible: onboarding.submitting || onboarding.serverBusy
                         text: qsTr("Создаём ключ и аккаунт…")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 2
+                        font.pointSize: Theme.fontBody
                     }
 
                     Item { Layout.fillWidth: true }

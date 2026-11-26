@@ -217,7 +217,7 @@ LegionView {
                                 Label {
                                     text: Theme.clock(home.remaining)
                                     color: Theme.text
-                                    font.pointSize: 40
+                                    font.pointSize: Theme.fontDisplay
                                     font.bold: true
                                 }
 
@@ -507,14 +507,14 @@ LegionView {
                                           ? modelData.club.name
                                           : home.clubLabel(modelData.club_id)
                                     color: Theme.text
-                                    font.pointSize: Theme.fontSmall + 1
+                                    font.pointSize: Theme.fontSmall
                                     elide: Text.ElideRight
                                 }
 
                                 Label {
                                     text: Theme.money(modelData.balance)
                                     color: Number(modelData.balance) > 0 ? Theme.text : Theme.warning
-                                    font.pointSize: Theme.fontSmall + 1
+                                    font.pointSize: Theme.fontSmall
                                     font.bold: true
                                 }
                             }
@@ -524,7 +524,7 @@ LegionView {
                             visible: home.wallet.length === 0
                             text: qsTr("Баланс пока пуст")
                             color: Theme.textMuted
-                            font.pointSize: Theme.fontSmall + 1
+                            font.pointSize: Theme.fontSmall
                         }
                     }
                 }

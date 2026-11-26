@@ -8,6 +8,7 @@
 #include <QNetworkProxyFactory>
 #include <QPalette>
 #include <QFont>
+#include <QFontDatabase>
 #include <QCursor>
 #include <QElapsedTimer>
 #include <QTemporaryFile>
@@ -762,8 +763,20 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
 
+    QFontDatabase::addApplicationFont(QStringLiteral(":/res/fonts/Manrope-Regular.ttf"));
+    QFontDatabase::addApplicationFont(QStringLiteral(":/res/fonts/Manrope-SemiBold.ttf"));
+    QFontDatabase::addApplicationFont(QStringLiteral(":/res/fonts/Manrope-Bold.ttf"));
+    if (QFontDatabase().families().contains(QStringLiteral("Manrope"))) {
+        QFont appFont(QStringLiteral("Manrope"));
+        const int pointSize = QGuiApplication::font().pointSize();
+        if (pointSize > 0) {
+            appFont.setPointSize(pointSize);
+        }
+        QGuiApplication::setFont(appFont);
+    }
+
 #ifdef LG_STAGING_BUILD
-    QGuiApplication::setApplicationDisplayName("Moonlight STG");
+    QGuiApplication::setApplicationDisplayName(QString::fromUtf8("ЛЕГИОН ИГР stg"));
 #endif
 
 #ifdef Q_OS_UNIX

@@ -54,9 +54,18 @@ var fontCaption = 9
 var fontSmall = 10
 var fontBody = 12
 var fontSubtitle = 14
+var fontLarge = 16
 var fontTitle = 18
 var fontHeader = 24
 var fontHero = 30
+var fontDisplay = 40
+var fontIcon = 44
+
+// Semantic aliases: use these in page/card code so a future scale change does
+// not require touching every view.
+var fontCardTitle = fontSubtitle
+var fontSectionTitle = fontTitle
+var fontPageTitle = fontHeader
 
 // Catalog data older than this many seconds disables start and payment.
 var staleSeconds = 600

@@ -29,6 +29,7 @@ ApplicationWindow {
     minimumHeight: 600
 
     // LegionGames theme (mirrors templates/home.html palette)
+    font.family: "Manrope"
     Material.theme: Material.Dark
     Material.accent: "#c92a2a"
     Material.primary: "#c92a2a"

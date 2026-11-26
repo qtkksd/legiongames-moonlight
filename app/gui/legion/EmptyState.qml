@@ -28,7 +28,7 @@ Item {
             Layout.alignment: Qt.AlignHCenter
             text: empty.iconText
             color: Theme.lineStrong
-            font.pointSize: 44
+            font.pointSize: Theme.fontIcon
             font.bold: true
         }
 

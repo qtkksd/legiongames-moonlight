@@ -84,7 +84,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: qsTr("Набор восстановления")
                         color: Theme.accent
-                        font.pointSize: Theme.fontTitle + 2
+                        font.pointSize: Theme.fontTitle
                         font.bold: true
                     }
 
@@ -92,7 +92,7 @@ LegionView {
                         visible: words.closeAllowed
                         text: qsTr("Закрыть")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 1
+                        font.pointSize: Theme.fontSmall
                     }
 
                     LegionButton {
@@ -108,7 +108,7 @@ LegionView {
                     Layout.fillWidth: true
                     text: qsTr("Сохраните восемь слов")
                     color: Theme.text
-                    font.pointSize: Theme.fontHero + 4
+                    font.pointSize: Theme.fontHero
                     font.bold: true
                     wrapMode: Text.Wrap
                 }
@@ -117,7 +117,7 @@ LegionView {
                     Layout.fillWidth: true
                     text: qsTr("Аккаунт: %1").arg(words.shownHandle.length > 0 ? words.shownHandle : "—")
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontBody + 3
+                    font.pointSize: Theme.fontSubtitle
                 }
 
                 Label {
@@ -125,7 +125,7 @@ LegionView {
                     visible: words.wordList.length === 0
                     text: qsTr("Слова не удалось получить. Выпустите новый набор.")
                     color: Theme.warning
-                    font.pointSize: Theme.fontBody + 3
+                    font.pointSize: Theme.fontSubtitle
                     wrapMode: Text.Wrap
                 }
 
@@ -156,7 +156,7 @@ LegionView {
                                 Label {
                                     text: (index + 1) + "."
                                     color: Theme.textDim
-                                    font.pointSize: Theme.fontBody + 2
+                                    font.pointSize: Theme.fontSubtitle
                                     font.bold: true
                                 }
 
@@ -164,7 +164,7 @@ LegionView {
                                     Layout.fillWidth: true
                                     text: modelData
                                     color: Theme.text
-                                    font.pointSize: Theme.fontTitle + 2
+                                    font.pointSize: Theme.fontTitle
                                     font.family: "monospace"
                                     wrapMode: TextEdit.NoWrap
                                 }
@@ -178,7 +178,7 @@ LegionView {
                     text: qsTr("Эти слова показываются один раз. Запишите их на бумагу и храните " +
                                "отдельно от компьютера. Любой, у кого есть слова, может восстановить аккаунт.")
                     color: Theme.warning
-                    font.pointSize: Theme.fontBody + 3
+                    font.pointSize: Theme.fontSubtitle
                     wrapMode: Text.Wrap
                 }
 
@@ -186,7 +186,7 @@ LegionView {
                     Layout.fillWidth: true
                     text: qsTr("Файл с набором сохранён на этом компьютере:")
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontSmall + 2
+                    font.pointSize: Theme.fontBody
                     wrapMode: Text.Wrap
                 }
 
@@ -195,7 +195,7 @@ LegionView {
                     visible: recoveryKitPath.length > 0
                     text: recoveryKitPath
                     color: Theme.textDim
-                    font.pointSize: Theme.fontSmall + 1
+                    font.pointSize: Theme.fontSmall
                     font.family: "monospace"
                     wrapMode: TextEdit.WrapAnywhere
                 }

@@ -21,6 +21,10 @@
         <file>res/baseline-error_outline-24px.svg</file>
         <file>res/baseline-check_circle_outline-24px.svg</file>
         <file>res/discord.svg</file>
+        <file>res/fonts/Manrope-Regular.ttf</file>
+        <file>res/fonts/Manrope-SemiBold.ttf</file>
+        <file>res/fonts/Manrope-Bold.ttf</file>
+        <file>res/fonts/OFL.txt</file>
         <file>languages/qml_de.ts</file>
         <file>languages/qml_de.qm</file>
         <file>languages/qml_fr.ts</file>

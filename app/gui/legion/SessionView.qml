@@ -317,7 +317,7 @@ LegionView {
                             Label {
                                 text: Theme.clock(sessionView.remaining)
                                 color: Theme.text
-                                font.pointSize: 44
+                                font.pointSize: Theme.fontIcon
                                 font.bold: true
                             }
 

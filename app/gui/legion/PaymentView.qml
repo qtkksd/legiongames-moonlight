@@ -323,7 +323,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: qsTr("Пополнение баланса")
                         color: Theme.text
-                        font.pointSize: Theme.fontHeader + 2
+                        font.pointSize: Theme.fontHeader
                         font.bold: true
                     }
 
@@ -332,7 +332,7 @@ LegionView {
                         text: qsTr("Баланс пополняется для одного клуба. Чек 54-ФЗ придёт на email, " +
                                    "который вы укажете в браузере.")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontBody + 5
+                        font.pointSize: Theme.fontTitle
                         wrapMode: Text.Wrap
                     }
 
@@ -345,7 +345,7 @@ LegionView {
                         Label {
                             text: qsTr("Выберите клуб")
                             color: Theme.textMuted
-                            font.pointSize: Theme.fontSmall + 4
+                            font.pointSize: Theme.fontSubtitle
                         }
 
                         Repeater {
@@ -368,14 +368,14 @@ LegionView {
                                         Layout.fillWidth: true
                                         text: modelData.name
                                         color: Theme.text
-                                        font.pointSize: Theme.fontSubtitle + 2
+                                        font.pointSize: Theme.fontLarge
                                         font.bold: true
                                     }
 
                                     Label {
                                         text: Theme.pricePerHour(modelData.price_per_hour)
                                         color: Theme.textMuted
-                                        font.pointSize: Theme.fontSmall + 4
+                                        font.pointSize: Theme.fontSubtitle
                                     }
                                 }
 
@@ -391,7 +391,7 @@ LegionView {
                     Label {
                         text: qsTr("Сумма")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 4
+                        font.pointSize: Theme.fontSubtitle
                     }
 
                     RowLayout {
@@ -418,14 +418,14 @@ LegionView {
                     Label {
                         text: qsTr("Своя сумма")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 4
+                        font.pointSize: Theme.fontSubtitle
                     }
 
                     TextField {
                         id: amountField
                         Layout.fillWidth: true
                         placeholderText: qsTr("Своя сумма")
-                        font.pointSize: Theme.fontBody + 4
+                        font.pointSize: Theme.fontLarge
                         text: String(payment.amount)
                         validator: IntValidator { bottom: 1; top: 10000 }
                         inputMethodHints: Qt.ImhDigitsOnly
@@ -445,14 +445,14 @@ LegionView {
                     Label {
                         text: qsTr("Промокод")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 4
+                        font.pointSize: Theme.fontSubtitle
                     }
 
                     TextField {
                         id: promoField
                         Layout.fillWidth: true
                         placeholderText: qsTr("Если есть — введите код")
-                        font.pointSize: Theme.fontBody + 4
+                        font.pointSize: Theme.fontLarge
                         onTextChanged: payment.promoCode = text.trim()
                     }
 
@@ -460,7 +460,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: qsTr("Минимум 1 ₽, максимум 10 000 ₽.")
                         color: Theme.textDim
-                        font.pointSize: Theme.fontCaption + 3
+                        font.pointSize: Theme.fontBody
                     }
 
                     BalancePanel {
@@ -542,14 +542,14 @@ LegionView {
                             Label {
                                 text: qsTr("Платёж обрабатывается")
                                 color: Theme.text
-                                font.pointSize: Theme.fontHeader + 2
+                                font.pointSize: Theme.fontHeader
                                 font.bold: true
                             }
 
                             Label {
                                 text: qsTr("Можно закрыть это окно: оплата подтвердится на сервере.")
                                 color: Theme.textMuted
-                                font.pointSize: Theme.fontBody + 5
+                                font.pointSize: Theme.fontTitle
                             }
                         }
                     }
@@ -560,7 +560,7 @@ LegionView {
                                    "Баланс обновится только после подтверждения сервером.")
                             .arg(Theme.money(payment.amount)).arg(payment.clubName)
                         color: Theme.text
-                        font.pointSize: Theme.fontBody + 5
+                        font.pointSize: Theme.fontTitle
                         wrapMode: Text.Wrap
                     }
 
@@ -572,7 +572,7 @@ LegionView {
                                  ? qsTr("Ссылка на оплату действует 2 минуты. Откройте платёж снова — клуб и сумма останутся прежними.")
                                  : qsTr("Ссылка на оплату истекла. Если оплата не прошла, создайте новое пополнение."))
                         color: payment.handoffFresh ? Theme.textMuted : Theme.warning
-                        font.pointSize: Theme.fontSmall + 4
+                        font.pointSize: Theme.fontSubtitle
                         wrapMode: Text.Wrap
                     }
 
@@ -641,7 +641,7 @@ LegionView {
                         text: Api.intentStatusText(payment.intentStatus)
                         color: payment.stage === "succeeded" ? Theme.success
                                                               : (payment.stage === "failed" ? Theme.error : Theme.text)
-                        font.pointSize: Theme.fontHeader + 2
+                        font.pointSize: Theme.fontHeader
                         font.bold: true
                         wrapMode: Text.Wrap
                     }
@@ -654,7 +654,7 @@ LegionView {
                             .arg(Theme.money(payment.intentAmount.length > 0 ? payment.intentAmount
                                                                              : payment.amount))
                         color: Theme.text
-                        font.pointSize: Theme.fontBody + 5
+                        font.pointSize: Theme.fontTitle
                         wrapMode: Text.Wrap
                     }
 
@@ -663,7 +663,7 @@ LegionView {
                         visible: payment.stage === "failed"
                         text: qsTr("Деньги не списаны. Проверьте данные карты и попробуйте снова.")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontBody + 5
+                        font.pointSize: Theme.fontTitle
                         wrapMode: Text.Wrap
                     }
 
@@ -672,7 +672,7 @@ LegionView {
                         visible: payment.stage === "canceled"
                         text: qsTr("Платёж отменён. Можно создать новое пополнение.")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontBody + 5
+                        font.pointSize: Theme.fontTitle
                         wrapMode: Text.Wrap
                     }
 
@@ -681,7 +681,7 @@ LegionView {
                         visible: payment.stage === "timeout"
                         text: qsTr("Платёж пока не подтверждён. Проверьте статус ещё раз через минуту.")
                         color: Theme.warning
-                        font.pointSize: Theme.fontBody + 5
+                        font.pointSize: Theme.fontTitle
                         wrapMode: Text.Wrap
                     }
 
@@ -699,7 +699,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: qsTr("Возврат — через поддержку.")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 4
+                        font.pointSize: Theme.fontSubtitle
                     }
 
                     RowLayout {

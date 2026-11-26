@@ -91,7 +91,7 @@ LegionView {
                     Label {
                         text: Theme.money(wallet.total)
                         color: wallet.total > 0 ? Theme.text : Theme.warning
-                        font.pointSize: 40
+                        font.pointSize: Theme.fontDisplay
                         font.bold: true
                     }
 
@@ -209,7 +209,7 @@ LegionView {
                 width: parent.width
                 text: qsTr("Возврат оформляет поддержка. Напишите в Telegram-бот или на почту.")
                 color: Theme.textMuted
-                font.pointSize: Theme.fontBody + 2
+                font.pointSize: Theme.fontSubtitle
                 wrapMode: Text.Wrap
             }
 

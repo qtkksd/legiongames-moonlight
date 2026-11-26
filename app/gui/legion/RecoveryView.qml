@@ -136,7 +136,7 @@ LegionView {
                         Layout.fillWidth: true
                         text: qsTr("Восстановление доступа")
                         color: Theme.accent
-                        font.pointSize: Theme.fontTitle + 2
+                        font.pointSize: Theme.fontTitle
                         font.bold: true
                     }
 
@@ -152,7 +152,7 @@ LegionView {
                     Layout.fillWidth: true
                     text: qsTr("Введите имя аккаунта и восемь слов из набора")
                     color: Theme.text
-                    font.pointSize: Theme.fontHero + 4
+                    font.pointSize: Theme.fontHero
                     font.bold: true
                     wrapMode: Text.Wrap
                 }
@@ -162,7 +162,7 @@ LegionView {
                     text: qsTr("На этом компьютере будет создан новый ключ, а старое устройство " +
                                "отозвано. Слова не отправляются на сервер в открытом виде.")
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontBody + 3
+                    font.pointSize: Theme.fontSubtitle
                     wrapMode: Text.Wrap
                 }
 
@@ -173,7 +173,7 @@ LegionView {
                     Label {
                         text: qsTr("Имя аккаунта")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 2
+                        font.pointSize: Theme.fontBody
                     }
 
                     TextField {
@@ -181,7 +181,7 @@ LegionView {
                         Layout.fillWidth: true
                         placeholderText: "lg-..."
                         text: recovery.handleInput
-                        font.pointSize: Theme.fontBody + 2
+                        font.pointSize: Theme.fontSubtitle
                         onTextChanged: recovery.handleInput = text
                         Keys.onReturnPressed: recovery.focusFirst()
                     }
@@ -191,7 +191,7 @@ LegionView {
                     Layout.fillWidth: true
                     text: qsTr("Восемь слов")
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontSmall + 2
+                    font.pointSize: Theme.fontBody
                 }
 
                 GridLayout {
@@ -207,7 +207,7 @@ LegionView {
                             Layout.fillWidth: true
                             placeholderText: qsTr("Слово %1").arg(index + 1)
                             text: recovery.wordInputs[index]
-                            font.pointSize: Theme.fontBody + 2
+                            font.pointSize: Theme.fontSubtitle
                             onTextChanged: recovery.setWord(index, text)
                             Keys.onReturnPressed: recovery.submit()
                             Keys.onEnterPressed: recovery.submit()
@@ -222,14 +222,14 @@ LegionView {
                     Label {
                         text: qsTr("Имя этого компьютера")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 2
+                        font.pointSize: Theme.fontBody
                     }
 
                     TextField {
                         Layout.fillWidth: true
                         maximumLength: 32
                         text: recovery.deviceLabel
-                        font.pointSize: Theme.fontBody + 2
+                        font.pointSize: Theme.fontSubtitle
                         onTextChanged: recovery.deviceLabel = text
                     }
                 }
@@ -252,7 +252,7 @@ LegionView {
                         text: qsTr("Я принимаю <a href=\"%1\">пользовательское соглашение</a>.")
                                   .arg(recovery.agreementDocUrl)
                         color: Theme.text
-                        font.pointSize: Theme.fontBody + 3
+                        font.pointSize: Theme.fontSubtitle
                         wrapMode: Text.Wrap
                         onLinkActivated: recovery.openUrl(link)
                     }
@@ -278,7 +278,7 @@ LegionView {
                                   .arg(recovery.policyDocUrl)
                                   .arg(recovery.consentDocUrl)
                         color: Theme.text
-                        font.pointSize: Theme.fontBody + 3
+                        font.pointSize: Theme.fontSubtitle
                         wrapMode: Text.Wrap
                         onLinkActivated: recovery.openUrl(link)
                     }
@@ -288,7 +288,7 @@ LegionView {
                     Layout.fillWidth: true
                     text: recovery.ageNoticeText
                     color: Theme.textMuted
-                    font.pointSize: Theme.fontSmall + 2
+                    font.pointSize: Theme.fontBody
                     wrapMode: Text.Wrap
                 }
 
@@ -329,7 +329,7 @@ LegionView {
                         visible: recovery.submitting || recovery.serverBusy
                         text: qsTr("Проверяем слова и создаём ключ…")
                         color: Theme.textMuted
-                        font.pointSize: Theme.fontSmall + 2
+                        font.pointSize: Theme.fontBody
                     }
 
                     Item { Layout.fillWidth: true }

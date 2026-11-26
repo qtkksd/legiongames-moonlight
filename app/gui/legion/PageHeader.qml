@@ -40,7 +40,7 @@ Item {
                 Layout.fillWidth: true
                 text: header.title
                 color: Theme.text
-                font.pointSize: Theme.fontHeader
+                font.pointSize: Theme.fontPageTitle
                 font.bold: true
                 elide: Text.ElideRight
             }

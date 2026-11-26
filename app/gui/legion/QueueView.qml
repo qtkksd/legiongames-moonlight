@@ -252,7 +252,7 @@ LegionView {
                         Label {
                             text: Theme.clockShort(queue.claimSeconds)
                             color: Theme.accent
-                            font.pointSize: 44
+                            font.pointSize: Theme.fontIcon
                             font.bold: true
                         }
 
