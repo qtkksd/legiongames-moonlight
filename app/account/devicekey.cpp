@@ -299,13 +299,25 @@ DeviceKey *DeviceKey::fromPkcs8(const QByteArray &der)
         return nullptr;
     }
 
-    BIO *bio = BIO_new_mem_buf(const_cast<char *>(der.constData()), der.size());
-    if (bio == nullptr) {
+    // toPkcs8() writes an unencrypted PKCS#8 PrivateKeyInfo. The
+    // d2i_PKCS8PrivateKey_bio() helper expects an EncryptedPrivateKeyInfo
+    // (X509_SIG) and cannot parse the blob we actually store, so it returned
+    // NULL on every restart. Decode the PrivateKeyInfo structure explicitly.
+    const unsigned char *cursor =
+        reinterpret_cast<const unsigned char *>(der.constData());
+    PKCS8_PRIV_KEY_INFO *info =
+        d2i_PKCS8_PRIV_KEY_INFO(nullptr, &cursor, static_cast<long>(der.size()));
+    if (info == nullptr) {
         return nullptr;
     }
 
-    EVP_PKEY *key = d2i_PKCS8PrivateKey_bio(bio, nullptr, nullptr, nullptr);
-    BIO_free(bio);
+    // Reject trailing bytes: a concatenated or partially overwritten blob is
+    // not a valid identity even if its prefix parses.
+    const bool consumedAll =
+        cursor == reinterpret_cast<const unsigned char *>(der.constData()) + der.size();
+
+    EVP_PKEY *key = consumedAll ? EVP_PKCS82PKEY(info) : nullptr;
+    PKCS8_PRIV_KEY_INFO_free(info);
 
     if (key == nullptr) {
         return nullptr;
@@ -439,7 +451,20 @@ DeviceKey *DeviceKey::loadOrCreate(Vault *vault, bool *created, QString *errorCo
         return nullptr;
     }
 
-    if (!vault->save(vaultKey(), key->toPkcs8())) {
+    const QByteArray der = key->toPkcs8();
+    DeviceKey *roundTrip = der.isEmpty() ? nullptr : fromPkcs8(der);
+    if (roundTrip == nullptr || roundTrip->thumbprint() != key->thumbprint()) {
+        delete roundTrip;
+        delete key;
+        if (errorCode) {
+            *errorCode = QStringLiteral("key_encoding_failed");
+        }
+        qWarning() << "DeviceKey: generated key failed the PKCS#8 round-trip";
+        return nullptr;
+    }
+    delete roundTrip;
+
+    if (!vault->save(vaultKey(), der)) {
         if (errorCode) {
             *errorCode = vault->lastErrorCode().isEmpty()
                              ? QStringLiteral("vault_error")

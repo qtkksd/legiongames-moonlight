@@ -276,10 +276,15 @@ void LegionApi::replaceDeviceKey(DeviceKey *newKey)
     delete m_deviceKey;
     m_deviceKey = newKey;
 
-    if (m_vault != nullptr && m_vault->isAvailable() &&
-        !m_vault->save(DeviceKey::vaultKey(), m_deviceKey->toPkcs8())) {
-        qWarning() << "Account: cannot persist the recovered device key"
-                   << m_vault->lastErrorCode();
+    if (m_vault != nullptr && m_vault->isAvailable()) {
+        const QByteArray der = m_deviceKey->toPkcs8();
+        if (der.isEmpty()) {
+            qWarning() << "Account: recovered device key cannot be encoded";
+        }
+        else if (!m_vault->save(DeviceKey::vaultKey(), der)) {
+            qWarning() << "Account: cannot persist the recovered device key"
+                       << m_vault->lastErrorCode();
+        }
     }
 
     if (m_client != nullptr) {
