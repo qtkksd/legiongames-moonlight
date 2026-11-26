@@ -123,23 +123,18 @@ ApplicationWindow {
         }
     }
 
-    // The account backend exposes `legionApi` as a context property. Without
-    // it the classic PC grid stays the entry point, so a partially built
-    // backend never leaves the user on a blank screen.
-    function legionApiAvailable() {
-        try {
-            return typeof legionApi !== "undefined" && legionApi !== null
-        }
-        catch (error) {
-            return false
-        }
-    }
-
     function startView() {
         // Only the normal start goes through the product shell. Command-line
         // modes (--stream/--quit/--pair) own their initial page and must not
-        // be replaced even when the account backend is loaded.
-        if (initialView === "qrc:/gui/PcView.qml" && legionApiAvailable()) {
+        // be replaced.
+        //
+        // legionApi is installed in the root context by main.cpp before this
+        // QML document is loaded. Do not make the app-first entry point
+        // depend on a QML `typeof` probe: on some Qt/platform combinations
+        // that probe returns false for context properties during the initial
+        // StackView push, sending the user to the old Moonlight PC grid
+        // (usually an empty screen with only the gear button).
+        if (initialView === "qrc:/gui/PcView.qml") {
             return "qrc:/gui/legion/LegionShell.qml"
         }
         return initialView
