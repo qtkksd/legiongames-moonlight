@@ -132,7 +132,7 @@ LegionView {
                 queue.claiming = false
                 queue.showError(code, message, op)
                 if (queue.shell) {
-                    queue.shell.refreshQueue()
+                    queue.shell.refreshQueue(true)
                 }
             }
         }
@@ -315,7 +315,7 @@ LegionView {
                                 queue.join()
                             }
                             else if (queue.shell) {
-                                queue.shell.refreshQueue()
+                                queue.shell.refreshQueue(true)
                             }
                         }
                     }
@@ -381,7 +381,7 @@ LegionView {
                             text: qsTr("Обновить")
                             onClicked: {
                                 if (queue.shell) {
-                                    queue.shell.refreshQueue()
+                                    queue.shell.refreshQueue(true)
                                 }
                             }
                         }

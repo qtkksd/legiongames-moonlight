@@ -36,10 +36,7 @@ LegionView {
 
     function activate() {
         if (shell) {
-            shell.refreshSession()
-            shell.refreshQueue()
-            shell.refreshWallet()
-            shell.loadCatalog(false)
+            shell.refreshAll(false)
         }
         syncSession()
     }
@@ -545,7 +542,7 @@ LegionView {
                 canRetry: true
                 onRetry: {
                     if (home.shell) {
-                        home.shell.loadCatalog(false)
+                        home.shell.loadCatalog(false, true)
                     }
                 }
             }

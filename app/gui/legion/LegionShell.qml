@@ -84,14 +84,29 @@ Item {
     property string catalogErrorCode: ""
     property string catalogErrorMessage: ""
 
-    // Cache-first data. A detail page must not block or re-request the same
-    // club on every open: render the cached row, then revalidate in the
-    // background once the short TTL expires.
+    // Cache-first data. Views render the last snapshot immediately and only
+    // revalidate after the short TTL. Mutations use force=true to invalidate.
+    readonly property int catalogCacheTtlMs: 15000
     readonly property int clubCacheTtlMs: 30000
-    readonly property int walletCacheTtlMs: 30000
+    readonly property int walletCacheTtlMs: 15000
+    readonly property int sessionCacheTtlMs: 10000
+    readonly property int queueCacheTtlMs: 3000
+
+    property double catalogFetchedAt: 0
     property var clubFetchedAt: ({})
     property var clubInFlight: ({})
+    property var clubDirty: ({})
     property double walletFetchedAt: 0
+    property double sessionFetchedAt: 0
+    property double queueFetchedAt: 0
+    property bool catalogInFlight: false
+    property bool walletInFlight: false
+    property bool sessionInFlight: false
+    property bool queueInFlight: false
+    property bool catalogDirty: false
+    property bool walletDirty: false
+    property bool sessionDirty: false
+    property bool queueDirty: false
 
     // Navigation
     property string section: "home"
@@ -213,15 +228,31 @@ Item {
 
     // ---- server data ----------------------------------------------------
 
-    function loadCatalog(availableOnly) {
+    function loadCatalog(availableOnly, force) {
+        // The app keeps one full catalog and filters it locally. The
+        // availableOnly argument is kept for call-site compatibility.
+        if (catalogInFlight) {
+            if (force) {
+                catalogDirty = true
+            }
+            return false
+        }
+        if (!force && catalogFetchedAt > 0 &&
+                (Date.now() - catalogFetchedAt) < catalogCacheTtlMs) {
+            return false
+        }
+        catalogInFlight = true
         catalogLoading = true
         catalogErrorCode = ""
         catalogErrorMessage = ""
-        if (!Api.getClubs(api, availableOnly === true)) {
+        if (!Api.getClubs(api, false)) {
+            catalogInFlight = false
             catalogLoading = false
             catalogErrorCode = "offline"
             catalogErrorMessage = ""
+            return false
         }
+        return true
     }
 
     function clubFetchedAtMs(slug) {
@@ -238,6 +269,9 @@ Item {
             return false
         }
         if (clubInFlight[key] === true) {
+            if (force) {
+                clubDirty[key] = true
+            }
             return false
         }
         var fetchedAt = clubFetchedAtMs(key)
@@ -253,31 +287,72 @@ Item {
         return true
     }
 
-    function refreshWallet() {
-        Api.getWallet(api)
+    function refreshWallet(force) {
+        if (walletInFlight) {
+            if (force) {
+                walletDirty = true
+            }
+            return false
+        }
+        if (!force && walletFetchedAt > 0 &&
+                (Date.now() - walletFetchedAt) < walletCacheTtlMs) {
+            return false
+        }
+        walletInFlight = true
+        if (!Api.getWallet(api)) {
+            walletInFlight = false
+            return false
+        }
+        return true
     }
 
     function refreshWalletIfStale() {
-        if (walletFetchedAt > 0 &&
-                (Date.now() - walletFetchedAt) < walletCacheTtlMs) {
-            return
+        return refreshWallet(false)
+    }
+
+    function refreshSession(force) {
+        if (sessionInFlight) {
+            if (force) {
+                sessionDirty = true
+            }
+            return false
         }
-        refreshWallet()
+        if (!force && sessionFetchedAt > 0 &&
+                (Date.now() - sessionFetchedAt) < sessionCacheTtlMs) {
+            return false
+        }
+        sessionInFlight = true
+        if (!Api.getCurrentSession(api)) {
+            sessionInFlight = false
+            return false
+        }
+        return true
     }
 
-    function refreshSession() {
-        Api.getCurrentSession(api)
+    function refreshQueue(force) {
+        if (queueInFlight) {
+            if (force) {
+                queueDirty = true
+            }
+            return false
+        }
+        if (!force && queueFetchedAt > 0 &&
+                (Date.now() - queueFetchedAt) < queueCacheTtlMs) {
+            return false
+        }
+        queueInFlight = true
+        if (!Api.getQueue(api)) {
+            queueInFlight = false
+            return false
+        }
+        return true
     }
 
-    function refreshQueue() {
-        Api.getQueue(api)
-    }
-
-    function refreshAll() {
-        loadCatalog(false)
-        refreshWallet()
-        refreshSession()
-        refreshQueue()
+    function refreshAll(force) {
+        loadCatalog(false, force === true)
+        refreshWallet(force === true)
+        refreshSession(force === true)
+        refreshQueue(force === true)
     }
 
     function clubById(id) {
@@ -327,7 +402,7 @@ Item {
         if (pageSource.length === 0) {
             showSection("home")
         }
-        refreshAll()
+        refreshAll(true)
     }
 
     function syncWords() {
@@ -407,16 +482,27 @@ Item {
         function onResponse(op, data) {
             if (op === "clubs") {
                 shell.catalogLoading = false
+                shell.catalogInFlight = false
                 shell.catalog = Api.clubsOf(data)
                 // Age is measured from the local receipt time, not the server
                 // clock: a small clock skew must not mark fresh data stale.
                 shell.catalogAt = new Date().toISOString()
+                shell.catalogFetchedAt = Date.now()
                 shell.catalogErrorCode = ""
                 shell.catalogErrorMessage = ""
+                if (shell.catalogDirty) {
+                    shell.catalogDirty = false
+                    shell.loadCatalog(false, true)
+                }
             }
             else if (op === "wallet") {
                 shell.wallet = Api.walletClubsOf(data)
+                shell.walletInFlight = false
                 shell.walletFetchedAt = Date.now()
+                if (shell.walletDirty) {
+                    shell.walletDirty = false
+                    shell.refreshWallet(true)
+                }
             }
             else if (op === "club") {
                 var updatedClub = Api.clubOf(data)
@@ -428,47 +514,87 @@ Item {
                     }
                     else {
                         shell.clubInFlight = ({})
+                        shell.clubDirty = ({})
                     }
                     shell.updateClub(updatedClub)
+                    if (clubSlug.length > 0 && shell.clubDirty[clubSlug]) {
+                        shell.clubDirty[clubSlug] = false
+                        shell.refreshClub(clubSlug, true)
+                    }
                 }
             }
             else if (op === "session_current" || op === "session_start" ||
                      op === "session_stop" || op === "session_reconnect") {
+                shell.sessionInFlight = false
+                shell.sessionFetchedAt = Date.now()
                 shell.session = op === "session_stop" ? null : Api.sessionOf(data)
                 if (op !== "session_current") {
-                    shell.loadCatalog(false)
-                    shell.refreshWallet()
+                    shell.loadCatalog(false, true)
+                    shell.refreshWallet(true)
+                }
+                if (shell.sessionDirty) {
+                    shell.sessionDirty = false
+                    shell.refreshSession(true)
                 }
             }
             else if (op === "queue" || op === "queue_join" || op === "queue_leave") {
+                shell.queueInFlight = false
+                shell.queueFetchedAt = Date.now()
                 shell.queueEntry = Api.entryOf(data)
                 if (op !== "queue") {
-                    shell.loadCatalog(false)
+                    shell.loadCatalog(false, true)
+                }
+                if (shell.queueDirty) {
+                    shell.queueDirty = false
+                    shell.refreshQueue(true)
                 }
             }
             else if (op === "queue_claim") {
+                shell.queueInFlight = false
+                shell.queueFetchedAt = Date.now()
                 shell.queueEntry = null
                 shell.session = Api.sessionOf(data)
-                shell.loadCatalog(false)
-                shell.refreshWallet()
+                shell.loadCatalog(false, true)
+                shell.refreshWallet(true)
+                if (shell.queueDirty) {
+                    shell.queueDirty = false
+                    shell.refreshQueue(true)
+                }
             }
         }
 
         function onFailed(op, code, message) {
             if (op === "clubs") {
                 shell.catalogLoading = false
+                shell.catalogInFlight = false
+                shell.catalogDirty = false
                 shell.catalogErrorCode = code ? String(code) : "server_error"
                 shell.catalogErrorMessage = message ? String(message) : ""
             }
             else if (op === "club") {
                 shell.clubInFlight = ({})
+                shell.clubDirty = ({})
             }
-            else if (op === "session_current" && code === "not_found") {
+            else if (op === "wallet") {
+                shell.walletInFlight = false
+                shell.walletDirty = false
+            }
+            else if (op === "session_current") {
+                shell.sessionInFlight = false
+                shell.sessionDirty = false
+            }
+            else if (op === "queue") {
+                shell.queueInFlight = false
+                shell.queueDirty = false
+            }
+            if (op === "session_current" && code === "not_found") {
                 // No active session is a normal answer, not an error.
                 shell.session = null
+                shell.sessionFetchedAt = Date.now()
             }
             else if (op === "queue" && code === "not_found") {
                 shell.queueEntry = null
+                shell.queueFetchedAt = Date.now()
             }
         }
 

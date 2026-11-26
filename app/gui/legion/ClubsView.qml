@@ -12,7 +12,20 @@ LegionView {
 
     property bool onlyAvailable: false
 
-    readonly property var rows: Api.sortClubs(shell ? shell.catalog : [])
+    readonly property var allRows: Api.sortClubs(shell ? shell.catalog : [])
+    readonly property var rows: {
+        if (!onlyAvailable) {
+            return allRows
+        }
+        var filtered = []
+        for (var i = 0; i < allRows.length; i++) {
+            var club = allRows[i]
+            if (Api.isClubOpen(club) && Number(club.free_units || 0) > 0) {
+                filtered.push(club)
+            }
+        }
+        return filtered
+    }
     readonly property string updatedAt: shell ? shell.catalogAt : ""
     readonly property bool stale: Theme.isStale(updatedAt.length > 0 ? updatedAt : catalogUpdatedAt)
     readonly property string loadErrorCode: shell ? shell.catalogErrorCode : ""
@@ -21,7 +34,7 @@ LegionView {
 
     function activate() {
         if (shell) {
-            shell.loadCatalog(onlyAvailable)
+            shell.loadCatalog(false)
         }
     }
 
@@ -31,7 +44,7 @@ LegionView {
 
     function refresh() {
         if (shell) {
-            shell.loadCatalog(onlyAvailable)
+            shell.loadCatalog(false, true)
         }
     }
 
@@ -69,7 +82,6 @@ LegionView {
             checked: clubs.onlyAvailable
             onToggled: {
                 clubs.onlyAvailable = checked
-                clubs.refresh()
             }
         }
 

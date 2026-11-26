@@ -490,7 +490,7 @@ LegionView {
                                 }
                             }
                             if (detail.shell) {
-                                detail.shell.refreshWallet()
+                                detail.shell.refreshWallet(true)
                             }
                         }
                     }

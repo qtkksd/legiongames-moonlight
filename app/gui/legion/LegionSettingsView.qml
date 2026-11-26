@@ -90,9 +90,9 @@ LegionView {
         Api.checkNetbirdStatus(api)
         Api.retryFailedStep(api)
         if (shell) {
-            shell.loadCatalog(false)
-            shell.refreshWallet()
-            shell.refreshSession()
+            shell.loadCatalog(false, true)
+            shell.refreshWallet(true)
+            shell.refreshSession(true)
         }
     }
 

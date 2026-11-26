@@ -167,7 +167,7 @@ LegionView {
         if (status === "succeeded") {
             stage = "succeeded"
             if (shell) {
-                shell.refreshWallet()
+                shell.refreshWallet(true)
             }
         }
         else if (status === "failed") {

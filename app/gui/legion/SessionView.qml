@@ -132,7 +132,7 @@ LegionView {
                 ComputerManager.stopLegionConnect()
                 sessionView.summaryVisible = true
                 if (sessionView.shell) {
-                    sessionView.shell.refreshWallet()
+                    sessionView.shell.refreshWallet(true)
                 }
             }
             else if (op === "session_extend") {
@@ -155,7 +155,7 @@ LegionView {
                 sessionView.stopping = false
                 sessionView.showError(code, message, op)
                 if (sessionView.shell) {
-                    sessionView.shell.refreshSession()
+                    sessionView.shell.refreshSession(true)
                 }
             }
             else if (op === "session_extend") {
@@ -516,8 +516,8 @@ LegionView {
                             text: qsTr("Обновить")
                             onClicked: {
                                 if (sessionView.shell) {
-                                    sessionView.shell.refreshSession()
-                                    sessionView.shell.refreshWallet()
+                                    sessionView.shell.refreshSession(true)
+                                    sessionView.shell.refreshWallet(true)
                                 }
                             }
                         }

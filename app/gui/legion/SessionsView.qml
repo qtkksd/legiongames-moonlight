@@ -20,19 +20,31 @@ LegionView {
     property var history: []
     property bool historyLoading: false
     property string historyError: ""
+    property bool historyInFlight: false
+    property double historyFetchedAt: 0
+    readonly property int historyCacheTtlMs: 30000
 
     function activate() {
         if (shell) {
             shell.refreshSession()
             shell.refreshQueue()
         }
-        loadHistory()
+        loadHistory(false)
     }
 
-    function loadHistory() {
+    function loadHistory(force) {
+        if (historyInFlight) {
+            return
+        }
+        if (!force && historyFetchedAt > 0 &&
+                (Date.now() - historyFetchedAt) < historyCacheTtlMs) {
+            return
+        }
+        historyInFlight = true
         historyLoading = true
         historyError = ""
         if (!Api.getSessionHistory(api)) {
+            historyInFlight = false
             historyLoading = false
             historyError = "offline"
         }
@@ -57,6 +69,8 @@ LegionView {
         function onResponse(op, data) {
             if (op === "session_history") {
                 sessions.history = (data && data.sessions) ? data.sessions : []
+                sessions.historyInFlight = false
+                sessions.historyFetchedAt = Date.now()
                 sessions.historyLoading = false
                 sessions.historyError = ""
             }
@@ -64,6 +78,7 @@ LegionView {
 
         function onFailed(op, code, message) {
             if (op === "session_history") {
+                sessions.historyInFlight = false
                 sessions.historyLoading = false
                 sessions.historyError = code ? String(code) : "server_error"
                 sessions.showError(code, message, op)
@@ -289,7 +304,7 @@ LegionView {
                         text: Api.errorText(sessions.historyError, sessions.serverError)
                         detail: sessions.serverError
                         canRetry: true
-                        onRetry: sessions.loadHistory()
+                        onRetry: sessions.loadHistory(true)
                     }
                 }
             }
