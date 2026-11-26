@@ -242,6 +242,30 @@ Item {
         return Api.clubName(catalog, id)
     }
 
+    // Replace one catalog row with a fresher server payload. The home and
+    // clubs views read `catalog`, so a detail fetch immediately updates the
+    // free-PC count everywhere instead of leaving a stale list behind.
+    function updateClub(updated) {
+        if (!updated || updated.id === undefined) {
+            return
+        }
+        var next = []
+        var replaced = false
+        for (var i = 0; i < catalog.length; i++) {
+            if (String(catalog[i].id) === String(updated.id)) {
+                next.push(updated)
+                replaced = true
+            }
+            else {
+                next.push(catalog[i])
+            }
+        }
+        if (!replaced) {
+            next.push(updated)
+        }
+        catalog = next
+    }
+
     function walletFor(clubId) {
         return Api.walletFor(wallet, clubId)
     }
@@ -348,7 +372,10 @@ Item {
                 shell.wallet = Api.walletClubsOf(data)
             }
             else if (op === "club") {
-                shell.catalogAt = new Date().toISOString()
+                var updatedClub = Api.clubOf(data)
+                if (updatedClub) {
+                    shell.updateClub(updatedClub)
+                }
             }
             else if (op === "session_current" || op === "session_start" ||
                      op === "session_stop" || op === "session_reconnect") {

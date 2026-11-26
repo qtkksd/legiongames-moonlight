@@ -312,9 +312,24 @@ LegionView {
                                     width: parent.width
                                     height: 60
                                     radius: Theme.radiusS
-                                    color: Theme.panelAlt
+                                    color: rowMouse.containsMouse || clubAction.hovered
+                                           ? Theme.panelHover : Theme.panelAlt
                                     border.width: 1
                                     border.color: Theme.line
+
+                                    // Keep the click area behind the row so the
+                                    // action button still receives its own clicks.
+                                    MouseArea {
+                                        id: rowMouse
+                                        anchors.left: parent.left
+                                        anchors.top: parent.top
+                                        anchors.bottom: parent.bottom
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: Theme.spaceL + clubAction.width
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: home.openClub(modelData)
+                                    }
 
                                     RowLayout {
                                         anchors.fill: parent
@@ -373,15 +388,6 @@ LegionView {
                                                 }
                                             }
                                         }
-                                    }
-
-                                    MouseArea {
-                                        anchors.left: parent.left
-                                        anchors.top: parent.top
-                                        anchors.bottom: parent.bottom
-                                        anchors.right: clubAction.left
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: home.openClub(modelData)
                                     }
                                 }
                             }

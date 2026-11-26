@@ -10,6 +10,7 @@ LegionView {
     id: detail
 
     property var club: null
+    property string detailUpdatedAt: ""
     property bool starting: false
     property bool joining: false
 
@@ -34,6 +35,9 @@ LegionView {
     }
 
     readonly property string updatedAt: {
+        if (detailUpdatedAt.length > 0) {
+            return detailUpdatedAt
+        }
         if (shell && shell.catalogAt) {
             return shell.catalogAt
         }
@@ -112,7 +116,11 @@ LegionView {
 
         function onResponse(op, data) {
             if (op === "club") {
-                detail.club = Api.clubOf(data)
+                var updatedClub = Api.clubOf(data)
+                if (updatedClub) {
+                    detail.club = updatedClub
+                    detail.detailUpdatedAt = new Date().toISOString()
+                }
             }
             else if (op === "session_start") {
                 detail.starting = false
@@ -129,6 +137,22 @@ LegionView {
                 detail.starting = false
                 detail.joining = false
                 detail.showError(code, message, op)
+            }
+        }
+    }
+
+    Connections {
+        target: detail.shell
+        ignoreUnknownSignals: true
+
+        function onCatalogChanged() {
+            var synced = detail.shell ? detail.shell.clubById(detail.clubId) : null
+            if (synced) {
+                detail.club = synced
+                if (detail.shell && detail.shell.catalogAt &&
+                        detail.shell.catalogAt > detail.detailUpdatedAt) {
+                    detail.detailUpdatedAt = detail.shell.catalogAt
+                }
             }
         }
     }

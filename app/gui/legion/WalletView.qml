@@ -217,26 +217,23 @@ LegionView {
                 wrapMode: Text.Wrap
             }
 
-            Row {
-                spacing: Theme.spaceXl
+            RowLayout {
+                width: parent.width
+                spacing: Theme.spaceM
 
-                Text {
-                    text: '<a href="https://t.me/legiongamebot">Telegram-бот</a>'
-                    textFormat: Text.RichText
-                    color: Theme.textMuted
-                    linkColor: Theme.accent
-                    font.pointSize: Theme.fontBody + 2
-                    onLinkActivated: wallet.openUrl(link)
+                LegionButton {
+                    kind: "secondary"
+                    text: qsTr("Telegram-бот")
+                    onClicked: wallet.openUrl("https://t.me/legiongamebot")
                 }
 
-                Text {
-                    text: '<a href="mailto:rem.legiongames@yandex.com">rem.legiongames@yandex.com</a>'
-                    textFormat: Text.RichText
-                    color: Theme.textMuted
-                    linkColor: Theme.accent
-                    font.pointSize: Theme.fontBody + 2
-                    onLinkActivated: wallet.openUrl(link)
+                LegionButton {
+                    kind: "secondary"
+                    text: qsTr("rem.legiongames@yandex.com")
+                    onClicked: wallet.openUrl("mailto:rem.legiongames@yandex.com")
                 }
+
+                Item { Layout.fillWidth: true }
             }
         }
     }
