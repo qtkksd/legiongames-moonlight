@@ -42,6 +42,9 @@
         <file>gui/legion/ClubDetailView.qml</file>
         <file>gui/legion/ComputersView.qml</file>
         <file>gui/legion/ComputerCard.qml</file>
+        <file>gui/legion/ComputerAppsView.qml</file>
+        <file>gui/legion/ComputerAppCard.qml</file>
+        <file>gui/legion/PairPcDialog.qml</file>
         <file>gui/legion/SessionView.qml</file>
         <file>gui/legion/QueueView.qml</file>
         <file>gui/legion/WalletView.qml</file>

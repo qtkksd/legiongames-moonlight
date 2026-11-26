@@ -205,6 +205,7 @@ SOURCES += \
     backend/computermanager.cpp \
     backend/netbirddiscovery.cpp \
     backend/legionconnect.cpp \
+    backend/streamlauncher.cpp \
     backend/boxartmanager.cpp \
     backend/richpresencemanager.cpp \
     cli/commandlineparser.cpp \
@@ -261,6 +262,7 @@ HEADERS += \
     backend/computermanager.h \
     backend/netbirddiscovery.h \
     backend/legionconnect.h \
+    backend/streamlauncher.h \
     backend/boxartmanager.h \
     backend/richpresencemanager.h \
     cli/commandlineparser.h \

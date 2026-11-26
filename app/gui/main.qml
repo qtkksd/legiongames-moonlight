@@ -80,6 +80,30 @@ ApplicationWindow {
         toolBar.visible = !legionShellShown()
     }
 
+    Connections {
+        target: streamLauncher
+        ignoreUnknownSignals: true
+
+        function onStartRequested(session, appName, isResume) {
+            if (!session) {
+                return
+            }
+            var component = Qt.createComponent("qrc:/gui/StreamSegue.qml")
+            if (component.status !== Component.Ready) {
+                console.error("Cannot load StreamSegue:", component.errorString())
+                return
+            }
+            var segue = component.createObject(stackView, {
+                "session": session,
+                "appName": appName,
+                "isResume": isResume === true
+            })
+            if (segue) {
+                stackView.push(segue)
+            }
+        }
+    }
+
     function hasHardwareAccelerationChanged() {
         if (!SystemProperties.hasHardwareAcceleration && StreamingPreferences.videoDecoderSelection !== StreamingPreferences.VDS_FORCE_SOFTWARE) {
             if (SystemProperties.isRunningXWayland) {

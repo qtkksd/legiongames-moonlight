@@ -18,6 +18,9 @@ LegionView {
     property ComputerModel computerModel: createModel()
     property string pendingForgetUuid: ""
     property string pendingForgetName: ""
+    property int pairingIndex: -1
+    property string pairingName: ""
+    property bool openAppsAfterPair: false
 
     readonly property var session: shell ? shell.session : null
     readonly property bool sessionLive: session !== null &&
@@ -73,6 +76,78 @@ LegionView {
         forgetDialog.open()
     }
 
+    function openApps(index, name, uuid) {
+        go("qrc:/gui/legion/ComputerAppsView.qml", {
+               computerIndex: index,
+               computerName: name,
+               computerUuid: uuid
+           })
+    }
+
+    function startPairing(index, name) {
+        pairingIndex = index
+        pairingName = name
+        openAppsAfterPair = true
+        pairDialog.pin = computerModel.generatePinString()
+        pairDialog.pcName = name
+        pairDialog.busy = true
+        pairDialog.errorText = ""
+        pairDialog.open()
+        computerModel.pairComputer(index, pairDialog.pin)
+    }
+
+    function activateComputer(index, card) {
+        if (!card) {
+            return
+        }
+        if (card.currentSession) {
+            go("qrc:/gui/legion/SessionView.qml", {})
+            return
+        }
+        if (card.statusUnknown) {
+            showError("computer_searching", qsTr("Компьютер ещё ищется."),
+                      "computer")
+            return
+        }
+        if (!card.online) {
+            if (card.wakeable) {
+                computerModel.wakeComputer(index)
+                showError("computer_waking", qsTr("Пробуждаем компьютер…"),
+                          "computer")
+            }
+            else {
+                showError("computer_offline", qsTr("Компьютер недоступен."),
+                          "computer")
+            }
+            return
+        }
+        if (!card.paired) {
+            startPairing(index, card.computerName)
+            return
+        }
+        openApps(index, card.computerName, card.uuid)
+    }
+
+    function finishPairing(error) {
+        if (!pairDialog.visible) {
+            return
+        }
+        pairDialog.busy = false
+        if (!error || String(error).length === 0) {
+            var index = pairingIndex
+            var name = pairingName
+            var openAfter = openAppsAfterPair
+            pairDialog.close()
+            if (openAfter && index >= 0) {
+                openAppsAfterPair = false
+                openApps(index, name, "")
+            }
+        }
+        else {
+            pairDialog.errorText = String(error)
+        }
+    }
+
     PageHeader {
         id: header
         anchors.top: parent.top
@@ -97,6 +172,13 @@ LegionView {
         Column {
             width: parent.width
             spacing: Theme.spaceL
+
+            ErrorBanner {
+                width: parent.width
+                visible: computers.hasError
+                text: computers.errorText
+                canRetry: false
+            }
 
             // ---- active session -----------------------------------------
             NeonFrame {
@@ -245,8 +327,10 @@ LegionView {
                             model: computers.computerModel
 
                             delegate: ComputerCard {
+                                id: pcCard
                                 width: parent.width
                                 computerName: model.name ? String(model.name) : ""
+                                uuid: model.uuid ? String(model.uuid) : ""
                                 address: model.address ? String(model.address) : ""
                                 online: model.online === true
                                 paired: model.paired === true
@@ -256,6 +340,7 @@ LegionView {
                                 legion: model.legion === true
                                 currentSession: computers.activeAddress.length > 0 &&
                                                 String(model.address) === computers.activeAddress
+                                onActivated: computers.activateComputer(index, pcCard)
                                 onOpenSession: computers.go(
                                                    "qrc:/gui/legion/SessionView.qml", {})
                                 onWake: computers.computerModel.wakeComputer(index)
@@ -291,6 +376,24 @@ LegionView {
             }
             computers.pendingForgetUuid = ""
             computers.pendingForgetName = ""
+        }
+    }
+
+    PairPcDialog {
+        id: pairDialog
+        onClosed: {
+            computers.pairingIndex = -1
+            computers.pairingName = ""
+            computers.openAppsAfterPair = false
+        }
+    }
+
+    Connections {
+        target: computers.computerModel
+        ignoreUnknownSignals: true
+
+        function onPairingCompleted(error) {
+            computers.finishPairing(error)
         }
     }
 }

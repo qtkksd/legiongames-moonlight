@@ -11,6 +11,7 @@ Rectangle {
     id: card
 
     property string computerName: ""
+    property string uuid: ""
     property string address: ""
     property bool online: false
     property bool paired: false
@@ -19,7 +20,9 @@ Rectangle {
     property bool statusUnknown: false
     property bool legion: false
     property bool currentSession: false
+    property bool hovered: false
 
+    signal activated()
     signal openSession()
     signal wake()
     signal forget()
@@ -29,7 +32,16 @@ Rectangle {
     radius: Theme.radiusM
     color: currentSession ? "#1f1414" : Theme.panel
     border.width: currentSession ? 2 : 1
-    border.color: currentSession ? Theme.accent : Theme.line
+    border.color: (currentSession || hovered) ? Theme.accent : Theme.line
+
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onEntered: card.hovered = true
+        onExited: card.hovered = false
+        onClicked: card.activated()
+    }
 
     RowLayout {
         id: content
