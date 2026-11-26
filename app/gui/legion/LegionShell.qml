@@ -523,43 +523,57 @@ Item {
                     }
                 }
             }
-            else if (op === "session_current" || op === "session_start" ||
-                     op === "session_stop" || op === "session_reconnect") {
+            else if (op === "session_current") {
                 shell.sessionInFlight = false
                 shell.sessionFetchedAt = Date.now()
-                shell.session = op === "session_stop" ? null : Api.sessionOf(data)
-                if (op !== "session_current") {
-                    shell.loadCatalog(false, true)
-                    shell.refreshWallet(true)
-                }
+                shell.session = Api.sessionOf(data)
                 if (shell.sessionDirty) {
                     shell.sessionDirty = false
                     shell.refreshSession(true)
                 }
             }
-            else if (op === "queue" || op === "queue_join" || op === "queue_leave") {
+            else if (op === "session_start" || op === "session_stop" ||
+                     op === "session_reconnect") {
+                if (shell.sessionInFlight) {
+                    // Do not let an older current-session response overwrite
+                    // this mutation; refresh once it settles.
+                    shell.sessionDirty = true
+                }
+                shell.sessionFetchedAt = Date.now()
+                shell.session = op === "session_stop" ? null : Api.sessionOf(data)
+                shell.loadCatalog(false, true)
+                shell.refreshWallet(true)
+            }
+            else if (op === "queue") {
                 shell.queueInFlight = false
                 shell.queueFetchedAt = Date.now()
                 shell.queueEntry = Api.entryOf(data)
-                if (op !== "queue") {
-                    shell.loadCatalog(false, true)
-                }
                 if (shell.queueDirty) {
                     shell.queueDirty = false
                     shell.refreshQueue(true)
                 }
             }
+            else if (op === "queue_join" || op === "queue_leave") {
+                if (shell.queueInFlight) {
+                    shell.queueDirty = true
+                }
+                shell.queueFetchedAt = Date.now()
+                shell.queueEntry = Api.entryOf(data)
+                shell.loadCatalog(false, true)
+            }
             else if (op === "queue_claim") {
-                shell.queueInFlight = false
+                if (shell.queueInFlight) {
+                    shell.queueDirty = true
+                }
+                if (shell.sessionInFlight) {
+                    shell.sessionDirty = true
+                }
                 shell.queueFetchedAt = Date.now()
                 shell.queueEntry = null
+                shell.sessionFetchedAt = Date.now()
                 shell.session = Api.sessionOf(data)
                 shell.loadCatalog(false, true)
                 shell.refreshWallet(true)
-                if (shell.queueDirty) {
-                    shell.queueDirty = false
-                    shell.refreshQueue(true)
-                }
             }
         }
 
