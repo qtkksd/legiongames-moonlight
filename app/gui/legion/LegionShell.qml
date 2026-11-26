@@ -312,6 +312,8 @@ Item {
 
     onModeChanged: {
         if (mode === "app") {
+            wordsVisible = false
+            recoveryVisible = false
             primeApp()
         }
         else {
@@ -326,6 +328,7 @@ Item {
     }
 
     onAppStateChanged: syncWords()
+    onOnboardingStepChanged: syncWords()
 
     Connections {
         target: shell.api

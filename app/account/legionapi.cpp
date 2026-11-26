@@ -636,6 +636,7 @@ void LegionApi::writeRecoveryKit(const QStringList &words)
 
 void LegionApi::applyMe(const QJsonObject &json)
 {
+    clearError();
     const QJsonObject account = json.value(QStringLiteral("account")).toObject();
     if (!account.isEmpty()) {
         const QString handle = account.value(QStringLiteral("handle")).toString();
@@ -687,6 +688,7 @@ void LegionApi::applyMe(const QJsonObject &json)
 void LegionApi::applyAuthResponse(const QString &op, const ApiResult &result,
                                   DeviceKey *adoptedKey)
 {
+    clearError();
     const QJsonObject json = result.json;
 
     if (adoptedKey != nullptr) {
@@ -2476,6 +2478,21 @@ QStringList LegionApi::wordsFromJson(const QJsonObject &json)
                 words.append(part.trimmed().toLower());
             }
             return words;
+        }
+    }
+
+    if (!value.isArray()) {
+        value = json.value(QStringLiteral("recovery_phrase"));
+        if (value.isString()) {
+            const QStringList parts =
+                value.toString().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+            if (parts.size() == 8) {
+                QStringList words;
+                for (const QString &part : parts) {
+                    words.append(part.trimmed().toLower());
+                }
+                return words;
+            }
         }
     }
 

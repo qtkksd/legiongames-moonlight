@@ -44,10 +44,6 @@ LegionView {
 
     function confirm() {
         Api.confirmWordsSaved(api)
-        if (shell) {
-            shell.wordsVisible = false
-        }
-        Api.refreshMe(api)
     }
 
     function close() {

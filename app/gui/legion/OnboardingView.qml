@@ -56,12 +56,23 @@ LegionView {
         if (keyLost) {
             recoveryButton.forceActiveFocus()
         }
-        else if (!wordsPending) {
+        else if (wordsPending) {
+            if (onboarding.words.length > 0) {
+                wordsConfirmButton.forceActiveFocus()
+            }
+            else {
+                wordsReissueButton.forceActiveFocus()
+            }
+        }
+        else {
             agreementBox.forceActiveFocus()
         }
     }
 
     function submit() {
+        if (wordsPending) {
+            return
+        }
         if (reconsent) {
             if (!agreementChecked || !pdnChecked) {
                 return
@@ -225,10 +236,40 @@ LegionView {
                         wrapMode: Text.Wrap
                     }
 
+                    Label {
+                        Layout.fillWidth: true
+                        visible: onboarding.words.length > 0
+                        text: qsTr("Ваши слова восстановления:")
+                        color: Theme.text
+                        font.pointSize: Theme.fontBody + 2
+                        font.bold: true
+                    }
+
+                    Repeater {
+                        model: onboarding.words
+
+                        delegate: Label {
+                            Layout.fillWidth: true
+                            text: (index + 1) + ". " + modelData
+                            color: Theme.text
+                            font.pointSize: Theme.fontTitle
+                            font.family: "monospace"
+                        }
+                    }
+
                     LegionButton {
-                        kind: "primary"
+                        id: wordsReissueButton
+                        kind: onboarding.words.length > 0 ? "secondary" : "primary"
                         text: qsTr("Показать набор ещё раз")
                         onClicked: Api.reissueWords(onboarding.api)
+                    }
+
+                    LegionButton {
+                        id: wordsConfirmButton
+                        kind: "primary"
+                        visible: onboarding.words.length > 0
+                        text: qsTr("Я сохранил слова")
+                        onClicked: Api.confirmWordsSaved(onboarding.api)
                     }
                 }
 
@@ -396,7 +437,7 @@ LegionView {
                     LegionButton {
                         id: primaryButton
                         kind: "primary"
-                        visible: !onboarding.keyLost
+                        visible: !onboarding.keyLost && !onboarding.wordsPending
                         focus: !onboarding.wordsPending && !onboarding.keyLost
                         enabled: onboarding.reconsent
                                  ? (onboarding.agreementChecked && onboarding.pdnChecked)
