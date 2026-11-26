@@ -28,6 +28,7 @@ Dialog {
     }
 
     contentItem: ColumnLayout {
+        width: dialog.availableWidth
         spacing: Theme.spaceM
 
         Label {
@@ -90,6 +91,7 @@ Dialog {
     }
 
     footer: RowLayout {
+        width: dialog.availableWidth
         spacing: Theme.spaceM
 
         Item { Layout.fillWidth: true }
