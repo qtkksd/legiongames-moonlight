@@ -763,10 +763,13 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
 
-    QFontDatabase::addApplicationFont(QStringLiteral(":/res/fonts/Manrope-Regular.ttf"));
+    const int manropeFontId =
+        QFontDatabase::addApplicationFont(QStringLiteral(":/res/fonts/Manrope-Regular.ttf"));
     QFontDatabase::addApplicationFont(QStringLiteral(":/res/fonts/Manrope-SemiBold.ttf"));
     QFontDatabase::addApplicationFont(QStringLiteral(":/res/fonts/Manrope-Bold.ttf"));
-    if (QFontDatabase().families().contains(QStringLiteral("Manrope"))) {
+    if (manropeFontId >= 0 &&
+            QFontDatabase::applicationFontFamilies(manropeFontId)
+                .contains(QStringLiteral("Manrope"))) {
         QFont appFont(QStringLiteral("Manrope"));
         const int pointSize = QGuiApplication::font().pointSize();
         if (pointSize > 0) {
