@@ -158,9 +158,7 @@ LegionView {
         onBack: queue.goBack()
     }
 
-    ScrollView {
-        contentWidth: availableWidth
-        rightPadding: Theme.scrollbarGutter
+    LegionScrollView {
         anchors.top: header.bottom
         anchors.topMargin: Theme.spaceL
         anchors.left: parent.left
@@ -169,9 +167,6 @@ LegionView {
         anchors.leftMargin: Theme.spaceXl
         anchors.rightMargin: Theme.spaceXl
         anchors.bottomMargin: Theme.spaceL
-        clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        ScrollBar.vertical: LegionScrollBar { }
 
         Column {
             width: parent.width

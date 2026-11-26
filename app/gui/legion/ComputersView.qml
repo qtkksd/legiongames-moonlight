@@ -83,10 +83,8 @@ LegionView {
         subtitle: qsTr("Подключённые и найденные ПК")
     }
 
-    ScrollView {
+    LegionScrollView {
         id: computerScroll
-        contentWidth: availableWidth
-        rightPadding: Theme.scrollbarGutter
         anchors.top: header.bottom
         anchors.topMargin: Theme.spaceL
         anchors.left: parent.left
@@ -95,9 +93,6 @@ LegionView {
         anchors.leftMargin: Theme.spaceXl
         anchors.rightMargin: Theme.spaceXl
         anchors.bottomMargin: Theme.spaceL
-        clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        ScrollBar.vertical: LegionScrollBar { }
 
         Column {
             width: parent.width

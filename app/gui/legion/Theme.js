@@ -27,7 +27,8 @@ var accentPressed = "#8f1c1c"
 // Scrollbar: a thin, always-visible rail. The gutter is reserved by
 // ScrollView.rightPadding / Flickable margins so cards never sit under it.
 var scrollbarWidth = 10
-var scrollbarGutter = 12
+var scrollbarGap = 5
+var scrollbarGutter = scrollbarWidth + scrollbarGap
 var scrollbarThumb = "#5a5a63"
 var scrollbarThumbHover = accent
 var success = "#7fd18b"

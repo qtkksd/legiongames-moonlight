@@ -1332,7 +1332,7 @@ Flickable {
 
     Column {
         padding: 10
-        rightPadding: 20
+        rightPadding: 15
         anchors.left: settingsColumn1.right
         id: settingsColumn2
         width: settingsPage.width / 2

@@ -94,9 +94,7 @@ LegionView {
         subtitle: account.handle.length > 0 ? account.handle : qsTr("Нет данных")
     }
 
-    ScrollView {
-        contentWidth: availableWidth
-        rightPadding: Theme.scrollbarGutter
+    LegionScrollView {
         anchors.top: header.bottom
         anchors.topMargin: Theme.spaceL
         anchors.left: parent.left
@@ -105,9 +103,6 @@ LegionView {
         anchors.leftMargin: Theme.spaceXl
         anchors.rightMargin: Theme.spaceXl
         anchors.bottomMargin: Theme.spaceL
-        clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        ScrollBar.vertical: LegionScrollBar { }
 
         Column {
             width: parent.width
