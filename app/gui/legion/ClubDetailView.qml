@@ -65,17 +65,34 @@ LegionView {
     function activate() {
         starting = false
         joining = false
+        detailUpdatedAt = ""
         if (shell && params && params.clubId !== undefined) {
             var cached = shell.clubById(params.clubId)
             if (cached) {
                 club = cached
             }
         }
-        if (params && params.slug) {
-            Api.getClub(api, params.slug)
+
+        var slug = params && params.slug ? String(params.slug) : ""
+        if (slug.length === 0 && club && club.slug) {
+            slug = String(club.slug)
+        }
+        if (slug.length > 0) {
+            if (shell) {
+                var cachedAt = shell.clubFetchedAtMs(slug)
+                if (cachedAt > 0) {
+                    detailUpdatedAt = new Date(cachedAt).toISOString()
+                }
+                // Render the cached club immediately. This only sends a
+                // request when the club is missing or the TTL has expired.
+                shell.refreshClub(slug, false)
+            }
+            else {
+                Api.getClub(api, slug)
+            }
         }
         if (shell) {
-            shell.refreshWallet()
+            shell.refreshWalletIfStale()
             if (shell.catalog.length === 0) {
                 shell.loadCatalog(false)
             }
@@ -118,6 +135,11 @@ LegionView {
             if (op === "club") {
                 var updatedClub = Api.clubOf(data)
                 if (updatedClub) {
+                    // Ignore a response for a club the user has already left.
+                    if (detail.club && detail.club.id !== undefined &&
+                            String(updatedClub.id) !== String(detail.club.id)) {
+                        return
+                    }
                     detail.club = updatedClub
                     detail.detailUpdatedAt = new Date().toISOString()
                 }
@@ -293,7 +315,12 @@ LegionView {
                 canRetry: true
                 onRetry: {
                     if (detail.club && detail.club.slug) {
-                        Api.getClub(detail.api, detail.club.slug)
+                        if (detail.shell) {
+                            detail.shell.refreshClub(detail.club.slug, true)
+                        }
+                        else {
+                            Api.getClub(detail.api, detail.club.slug)
+                        }
                     }
                 }
             }
@@ -455,7 +482,12 @@ LegionView {
                         text: qsTr("Обновить")
                         onClicked: {
                             if (detail.club && detail.club.slug) {
-                                Api.getClub(detail.api, detail.club.slug)
+                                if (detail.shell) {
+                                    detail.shell.refreshClub(detail.club.slug, true)
+                                }
+                                else {
+                                    Api.getClub(detail.api, detail.club.slug)
+                                }
                             }
                             if (detail.shell) {
                                 detail.shell.refreshWallet()

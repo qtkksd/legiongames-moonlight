@@ -84,6 +84,15 @@ Item {
     property string catalogErrorCode: ""
     property string catalogErrorMessage: ""
 
+    // Cache-first data. A detail page must not block or re-request the same
+    // club on every open: render the cached row, then revalidate in the
+    // background once the short TTL expires.
+    readonly property int clubCacheTtlMs: 30000
+    readonly property int walletCacheTtlMs: 30000
+    property var clubFetchedAt: ({})
+    property var clubInFlight: ({})
+    property double walletFetchedAt: 0
+
     // Navigation
     property string section: "home"
     property string pageSource: ""
@@ -215,8 +224,45 @@ Item {
         }
     }
 
+    function clubFetchedAtMs(slug) {
+        if (!slug) {
+            return 0
+        }
+        var value = clubFetchedAt[String(slug)]
+        return value ? Number(value) : 0
+    }
+
+    function refreshClub(slug, force) {
+        var key = slug ? String(slug).trim() : ""
+        if (key.length === 0) {
+            return false
+        }
+        if (clubInFlight[key] === true) {
+            return false
+        }
+        var fetchedAt = clubFetchedAtMs(key)
+        if (!force && fetchedAt > 0 &&
+                (Date.now() - fetchedAt) < clubCacheTtlMs) {
+            return false
+        }
+        clubInFlight[key] = true
+        if (!Api.getClub(api, key)) {
+            clubInFlight[key] = false
+            return false
+        }
+        return true
+    }
+
     function refreshWallet() {
         Api.getWallet(api)
+    }
+
+    function refreshWalletIfStale() {
+        if (walletFetchedAt > 0 &&
+                (Date.now() - walletFetchedAt) < walletCacheTtlMs) {
+            return
+        }
+        refreshWallet()
     }
 
     function refreshSession() {
@@ -370,10 +416,19 @@ Item {
             }
             else if (op === "wallet") {
                 shell.wallet = Api.walletClubsOf(data)
+                shell.walletFetchedAt = Date.now()
             }
             else if (op === "club") {
                 var updatedClub = Api.clubOf(data)
                 if (updatedClub) {
+                    var clubSlug = updatedClub.slug ? String(updatedClub.slug) : ""
+                    if (clubSlug.length > 0) {
+                        shell.clubInFlight[clubSlug] = false
+                        shell.clubFetchedAt[clubSlug] = Date.now()
+                    }
+                    else {
+                        shell.clubInFlight = ({})
+                    }
                     shell.updateClub(updatedClub)
                 }
             }
@@ -404,6 +459,9 @@ Item {
                 shell.catalogLoading = false
                 shell.catalogErrorCode = code ? String(code) : "server_error"
                 shell.catalogErrorMessage = message ? String(message) : ""
+            }
+            else if (op === "club") {
+                shell.clubInFlight = ({})
             }
             else if (op === "session_current" && code === "not_found") {
                 // No active session is a normal answer, not an error.
