@@ -34,16 +34,6 @@ LegionView {
         anchors.margins: Theme.spaceXl
         title: qsTr("Стриминг")
         subtitle: qsTr("Качество, звук, управление и хост")
-        showBack: true
-        backText: qsTr("Настройки")
-        onBack: {
-            if (stream.shell && stream.shell.pageHistory.length > 0) {
-                stream.goBack()
-            }
-            else {
-                stream.goSection("settings")
-            }
-        }
         z: 2
     }
 
