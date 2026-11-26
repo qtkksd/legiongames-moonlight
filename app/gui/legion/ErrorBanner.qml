@@ -38,21 +38,21 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 2
 
-            Label {
+            SelectableText {
                 Layout.fillWidth: true
                 text: banner.text
                 color: Theme.text
                 font.pointSize: Theme.fontBody
-                wrapMode: Text.Wrap
+                wrapMode: TextEdit.Wrap
             }
 
-            Label {
+            SelectableText {
                 Layout.fillWidth: true
                 visible: banner.detail.length > 0
                 text: banner.detail
                 color: Theme.textMuted
                 font.pointSize: Theme.fontSmall
-                wrapMode: Text.Wrap
+                wrapMode: TextEdit.Wrap
             }
         }
 

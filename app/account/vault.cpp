@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QtDebug>
 
@@ -78,51 +79,77 @@ public:
         }
         m_error.clear();
 
+        QByteArray fileBlob;
         QFile file(filePath(name));
-        if (!file.exists()) {
-            m_error = QStringLiteral("vault_missing");
-            return QByteArray();
+        if (file.exists()) {
+            if (file.open(QIODevice::ReadOnly)) {
+                fileBlob = file.readAll();
+                file.close();
+            }
+            else {
+                qWarning() << "Vault: cannot read DPAPI blob" << sanitizeName(name)
+                           << file.errorString();
+            }
         }
-        if (!file.open(QIODevice::ReadOnly)) {
-            m_error = QStringLiteral("vault_error");
-            qWarning() << "Vault: cannot read DPAPI blob" << sanitizeName(name)
-                       << file.errorString();
-            return QByteArray();
-        }
-        const QByteArray blob = file.readAll();
-        file.close();
+
+        auto readRegistry = [&]() -> QByteArray {
+            QSettings settings(QSettings::UserScope, QStringLiteral("LegionGames"),
+                               QStringLiteral("MoonlightVault"));
+            return settings.value(registryKey(name)).toByteArray();
+        };
+
+        QByteArray blob = fileBlob;
         if (blob.isEmpty()) {
-            m_error = QStringLiteral("vault_error");
-            return QByteArray();
+            blob = readRegistry();
         }
 
-        DATA_BLOB in;
-        in.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(blob.constData()));
-        in.cbData = static_cast<DWORD>(blob.size());
+        for (int attempt = 0; attempt < 2 && !blob.isEmpty(); ++attempt) {
+            DATA_BLOB in;
+            in.pbData = reinterpret_cast<BYTE *>(const_cast<char *>(blob.constData()));
+            in.cbData = static_cast<DWORD>(blob.size());
 
-        DATA_BLOB entropy = entropyBlob();
-        DATA_BLOB out;
-        out.pbData = nullptr;
-        out.cbData = 0;
+            DATA_BLOB entropy = entropyBlob();
+            DATA_BLOB out;
+            out.pbData = nullptr;
+            out.cbData = 0;
 
-        const BOOL okProtect = CryptUnprotectData(&in, nullptr, &entropy, nullptr, nullptr,
-                                                  CRYPTPROTECT_UI_FORBIDDEN, &out);
+            const BOOL okProtect = CryptUnprotectData(
+                &in, nullptr, &entropy, nullptr, nullptr,
+                CRYPTPROTECT_UI_FORBIDDEN, &out);
 
-        if (!okProtect) {
-            m_error = QStringLiteral("vault_unavailable");
+            if (okProtect) {
+                QByteArray plain(reinterpret_cast<const char *>(out.pbData),
+                                 static_cast<int>(out.cbData));
+                SecureZeroMemory(out.pbData, out.cbData);
+                LocalFree(out.pbData);
+
+                if (fileBlob != blob) {
+                    // Restore the missing/corrupt file from the registry copy.
+                    QDir().mkpath(directoryPath());
+                    QSaveFile restore(filePath(name));
+                    if (restore.open(QIODevice::WriteOnly) &&
+                        restore.write(blob) == blob.size()) {
+                        restore.commit();
+                        qWarning() << "Vault: restored" << sanitizeName(name)
+                                   << "from the registry copy";
+                    }
+                }
+
+                if (ok) {
+                    *ok = true;
+                }
+                return plain;
+            }
+
             qWarning() << "Vault: CryptUnprotectData failed" << GetLastError();
-            return QByteArray();
+            if (attempt == 0) {
+                blob = readRegistry();
+            }
         }
 
-        QByteArray plain(reinterpret_cast<const char *>(out.pbData),
-                         static_cast<int>(out.cbData));
-        SecureZeroMemory(out.pbData, out.cbData);
-        LocalFree(out.pbData);
-
-        if (ok) {
-            *ok = true;
-        }
-        return plain;
+        m_error = blob.isEmpty() ? QStringLiteral("vault_missing")
+                                 : QStringLiteral("vault_unavailable");
+        return QByteArray();
     }
 
     bool save(const QString &name, const QByteArray &data) override
@@ -169,14 +196,18 @@ public:
             return false;
         }
 
-        if (!restrictToCurrentUser(path)) {
-            // DPAPI already binds the blob to this Windows user. A protected
-            // DACL is defense-in-depth, but some filesystems and portable
-            // setups reject SetFileSecurityW; do not turn a readable vault
-            // into a failed account creation because of it.
-            qWarning() << "Vault: cannot restrict ACL on" << path
-                       << "- keeping the DPAPI-encrypted blob";
-        }
+        // A second copy in HKCU survives a deleted/redirected AppData file.
+        // It is the same DPAPI ciphertext, not plaintext.
+        QSettings settings(QSettings::UserScope, QStringLiteral("LegionGames"),
+                           QStringLiteral("MoonlightVault"));
+        settings.setValue(registryKey(name), blob);
+        settings.sync();
+
+        // Do not apply an explicit protected DACL. DPAPI already binds the
+        // blob to the current Windows user, and a DACL created during an
+        // elevated first run can make the file unreadable on the next normal
+        // start. The inherited AppData ACL is sufficient for confidentiality.
+        Q_UNUSED(restrictToCurrentUser);
 
         return true;
     }
@@ -184,6 +215,11 @@ public:
     bool remove(const QString &name) override
     {
         m_error.clear();
+        QSettings settings(QSettings::UserScope, QStringLiteral("LegionGames"),
+                           QStringLiteral("MoonlightVault"));
+        settings.remove(registryKey(name));
+        settings.sync();
+
         const QString path = filePath(name);
         if (!QFile::exists(path)) {
             return true;
@@ -196,6 +232,13 @@ public:
     }
 
 private:
+    static QString registryKey(const QString &name)
+    {
+        QString key = sanitizeName(name);
+        key.replace(QLatin1Char('.'), QLatin1Char('_'));
+        return QStringLiteral("vault/") + key;
+    }
+
     static QString directoryPath()
     {
         QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);

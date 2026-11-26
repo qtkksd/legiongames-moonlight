@@ -247,6 +247,10 @@ function openInstallFolder(api) {
     return call0(api, "openInstallFolder")
 }
 
+function openVaultFolder(api) {
+    return call0(api, "openVaultFolder")
+}
+
 function retryFailedStep(api) {
     return call0(api, "retryFailedStep")
 }

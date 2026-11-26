@@ -109,6 +109,7 @@ public:
     Q_INVOKABLE void openExternal(const QString &url);
     Q_INVOKABLE void openInstallFolder();
     Q_INVOKABLE void openLogFolder();
+    Q_INVOKABLE void openVaultFolder();
     Q_INVOKABLE QString vaultPath() const;
     Q_INVOKABLE void retryFailedStep();
 

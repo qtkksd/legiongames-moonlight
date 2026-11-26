@@ -170,6 +170,9 @@ void LegionApi::initialize()
     }
     else if (!errorCode.isEmpty()) {
         qWarning() << "Account: device key unavailable on startup:" << errorCode;
+        m_lastErrorCode = errorCode;
+        m_lastError = QStringLiteral("Ключ устройства не загрузился (%1).").arg(errorCode);
+        emit lastErrorChanged();
     }
 
     const bool haveRefresh = m_client->restoreRefreshToken();
@@ -2392,6 +2395,16 @@ QString LegionApi::vaultPath() const
         return QString();
     }
     return QDir::toNativeSeparators(base + QStringLiteral("/vault"));
+}
+
+void LegionApi::openVaultFolder()
+{
+    const QString path = vaultPath();
+    if (path.isEmpty() || !QDesktopServices::openUrl(QUrl::fromLocalFile(path))) {
+        fail(QStringLiteral("open_vault"),
+             QStringLiteral("open_failed"),
+             QStringLiteral("Не удалось открыть папку хранилища."));
+    }
 }
 
 void LegionApi::retryFailedStep()

@@ -200,6 +200,31 @@ LegionView {
                         font.pointSize: Theme.fontBody + 2
                         wrapMode: Text.Wrap
                     }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: onboarding.serverErrorCode.length > 0
+                        text: qsTr("Код: %1").arg(onboarding.serverErrorCode)
+                        color: Theme.textDim
+                        font.pointSize: Theme.fontSmall
+                    }
+
+                    SelectableText {
+                        Layout.fillWidth: true
+                        visible: onboarding.vaultPath.length > 0
+                        text: onboarding.vaultPath
+                        color: Theme.textDim
+                        font.pointSize: Theme.fontSmall
+                        font.family: "monospace"
+                        wrapMode: TextEdit.WrapAnywhere
+                    }
+
+                    LegionButton {
+                        kind: "secondary"
+                        compact: true
+                        text: qsTr("Открыть папку хранилища")
+                        onClicked: Api.openVaultFolder(onboarding.api)
+                    }
                 }
 
                 Label {
@@ -248,12 +273,13 @@ LegionView {
                     Repeater {
                         model: onboarding.words
 
-                        delegate: Label {
+                        delegate: SelectableText {
                             Layout.fillWidth: true
                             text: (index + 1) + ". " + modelData
                             color: Theme.text
                             font.pointSize: Theme.fontTitle
                             font.family: "monospace"
+                            wrapMode: TextEdit.NoWrap
                         }
                     }
 

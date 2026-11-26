@@ -160,12 +160,13 @@ LegionView {
                                     font.bold: true
                                 }
 
-                                Label {
+                                SelectableText {
                                     Layout.fillWidth: true
                                     text: modelData
                                     color: Theme.text
                                     font.pointSize: Theme.fontTitle + 2
                                     font.family: "monospace"
+                                    wrapMode: TextEdit.NoWrap
                                 }
                             }
                         }
