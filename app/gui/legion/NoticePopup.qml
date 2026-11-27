@@ -123,7 +123,10 @@ Dialog {
         RowLayout {
             id: footerRow
             anchors.fill: parent
-            anchors.margins: Theme.spaceM
+            anchors.leftMargin: Theme.spaceM
+            anchors.topMargin: Theme.spaceM
+            anchors.bottomMargin: Theme.spaceM
+            anchors.rightMargin: Theme.spaceXl
             spacing: Theme.spaceM
 
             Item { Layout.fillWidth: true }
