@@ -6,6 +6,8 @@ import "Theme.js" as Theme
 
 // Modal product notice for decisions or outcomes that need an explicit
 // acknowledgement. Routine connectivity failures stay in the banner host.
+// The dark/blurred backdrop is provided by ModalBackdrop; this component owns
+// only the centered panel so it can grow with its content.
 Dialog {
     id: dialog
 
@@ -16,15 +18,59 @@ Dialog {
     signal dismissed()
 
     modal: true
-    anchors.centerIn: Overlay.overlay
-    width: 480
-    padding: 0
+    // Do not use the platform dim: NotificationCenter renders the product
+    // scrim/blur behind this dialog.
+    dim: false
+    parent: Overlay.overlay
+    width: Math.min(650, parent ? parent.width - Theme.spaceXl * 2 : 650)
+    padding: Theme.spaceXl
     closePolicy: Popup.CloseOnEscape
+    transformOrigin: Item.Center
+
+    enter: Transition {
+        NumberAnimation {
+            property: "opacity"
+            from: 0
+            to: 1
+            duration: 160
+        }
+        NumberAnimation {
+            property: "scale"
+            from: 0.96
+            to: 1
+            duration: 220
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    exit: Transition {
+        NumberAnimation {
+            property: "opacity"
+            to: 0
+            duration: 120
+        }
+    }
+
+    function centerInWindow() {
+        var overlay = Overlay.overlay
+        if (!overlay) {
+            return
+        }
+        if (parent !== overlay) {
+            parent = overlay
+        }
+        x = Math.round((overlay.width - width) / 2)
+        y = Math.round((overlay.height - height) / 2)
+    }
+
+    onOpened: centerInWindow()
+    onWidthChanged: if (visible) centerInWindow()
+    onHeightChanged: if (visible) centerInWindow()
 
     background: Rectangle {
         color: Theme.panel
         radius: Theme.radiusM
-        border.width: 1
+        border.width: 2
         border.color: dialog.accent
     }
 

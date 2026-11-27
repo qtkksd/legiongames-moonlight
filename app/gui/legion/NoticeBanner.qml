@@ -11,76 +11,49 @@ Rectangle {
 
     property var notice: null
     readonly property string tone: notice && notice.tone ? String(notice.tone) : "danger"
+    readonly property string title: notice && notice.title ? String(notice.title) : ""
+    readonly property string text: notice && notice.text ? String(notice.text) : ""
+    readonly property string detail: notice && notice.detail ? String(notice.detail) : ""
+    readonly property string actionText: notice && notice.actionText
+                                         ? String(notice.actionText) : ""
     readonly property color accent: Theme.noticeColor(tone)
 
     signal actionClicked()
     signal dismissed()
 
     visible: notice !== null
-    implicitHeight: visible ? (layout.implicitHeight + Theme.spaceL) : 0
+    implicitWidth: Math.max(360, Math.min(560,
+                        content.implicitWidth + Theme.spaceL * 2))
+    implicitHeight: visible ? (content.implicitHeight + Theme.spaceL * 2) : 0
     color: Theme.panel
     radius: Theme.radiusM
     border.width: 1
     border.color: accent
 
-    RowLayout {
-        id: layout
+    ColumnLayout {
+        id: content
         anchors.fill: parent
         anchors.margins: Theme.spaceL
         spacing: Theme.spaceM
 
-        Label {
-            text: Theme.noticeIcon(banner.tone)
-            color: banner.accent
-            font.pointSize: Theme.fontTitle
-            font.bold: true
-        }
-
-        ColumnLayout {
+        RowLayout {
             Layout.fillWidth: true
-            spacing: Theme.spaceXs
+            spacing: Theme.spaceM
+
+            Label {
+                text: Theme.noticeIcon(banner.tone)
+                color: banner.accent
+                font.pointSize: Theme.fontTitle
+                font.bold: true
+            }
 
             Label {
                 Layout.fillWidth: true
-                text: banner.notice && banner.notice.title
-                      ? String(banner.notice.title) : ""
+                text: banner.title
                 color: banner.accent
                 font.pointSize: Theme.fontSubtitle
                 font.bold: true
                 wrapMode: Text.Wrap
-            }
-
-            SelectableText {
-                Layout.fillWidth: true
-                visible: !!(banner.notice && banner.notice.text)
-                text: banner.notice && banner.notice.text
-                      ? String(banner.notice.text) : ""
-                color: Theme.text
-                font.pointSize: Theme.fontBody
-                wrapMode: TextEdit.Wrap
-            }
-
-            SelectableText {
-                Layout.fillWidth: true
-                visible: !!(banner.notice && banner.notice.detail)
-                text: banner.notice && banner.notice.detail
-                      ? String(banner.notice.detail) : ""
-                color: Theme.textMuted
-                font.pointSize: Theme.fontSmall
-                wrapMode: TextEdit.Wrap
-            }
-        }
-
-        ColumnLayout {
-            spacing: Theme.spaceXs
-
-            LegionButton {
-                visible: !!(banner.notice && banner.notice.actionText)
-                kind: "secondary"
-                compact: true
-                text: banner.notice && banner.notice.actionText
-                      ? String(banner.notice.actionText) : ""
-                onClicked: banner.actionClicked()
             }
 
             LegionButton {
@@ -88,6 +61,39 @@ Rectangle {
                 compact: true
                 text: qsTr("Закрыть")
                 onClicked: banner.dismissed()
+            }
+        }
+
+        SelectableText {
+            Layout.fillWidth: true
+            visible: banner.text.length > 0
+            text: banner.text
+            color: Theme.text
+            font.pointSize: Theme.fontBody
+            wrapMode: TextEdit.Wrap
+        }
+
+        SelectableText {
+            Layout.fillWidth: true
+            visible: banner.detail.length > 0
+            text: banner.detail
+            color: Theme.textMuted
+            font.pointSize: Theme.fontSmall
+            wrapMode: TextEdit.Wrap
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible: banner.actionText.length > 0
+            spacing: Theme.spaceM
+
+            Item { Layout.fillWidth: true }
+
+            LegionButton {
+                kind: "secondary"
+                compact: true
+                text: banner.actionText
+                onClicked: banner.actionClicked()
             }
         }
     }

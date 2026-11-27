@@ -16,6 +16,7 @@ Item {
     property var popupQueue: []
     property var retryAction: null
     property var shell: null
+    property var backgroundSource: null
     property int nextId: 0
 
     visible: shell !== null && (shell.mode === "app" || shell.mode === "onboarding")
@@ -139,6 +140,12 @@ Item {
         id: bannerTimer
         repeat: false
         onTriggered: center.dismissBanner()
+    }
+
+    ModalBackdrop {
+        anchors.fill: parent
+        active: center.popup !== null
+        backgroundSource: center.backgroundSource
     }
 
     NoticeBanner {

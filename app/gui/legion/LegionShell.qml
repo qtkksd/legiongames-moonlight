@@ -803,6 +803,8 @@ Item {
         anchors.fill: parent
         shell: shell
         z: 45
+        backgroundSource: shell.mode === "app" ? appRow
+                         : (shell.mode === "onboarding" ? onboardingLoader : null)
         retryAction: function() {
             Api.retryFailedStep(shell.api)
         }
