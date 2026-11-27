@@ -32,7 +32,6 @@ LegionView {
     readonly property bool finished: status === "expired" || status === "stopped"
     readonly property string clubName: session && shell ? shell.clubName(session.club_id) : qsTr("Клуб")
     readonly property var walletRow: session && shell ? shell.walletFor(session.club_id) : null
-    readonly property string code: session && session.code ? String(session.code) : ""
     readonly property string pcLabel: {
         if (!session || !session.pc) {
             return qsTr("Компьютер: готовится")
@@ -82,10 +81,6 @@ LegionView {
 
     function connectNow() {
         if (!session || connecting) {
-            return
-        }
-        if (code.length === 0) {
-            Api.reconnectSession(api, session.id)
             return
         }
         connectError = ""
@@ -321,13 +316,6 @@ LegionView {
                                 text: sessionView.pcLabel
                                 color: Theme.text
                                 font.pointSize: Theme.fontBody
-                            }
-
-                            Label {
-                                visible: sessionView.code.length > 0
-                                text: qsTr("Код подключения: %1").arg(sessionView.code)
-                                color: Theme.textMuted
-                                font.pointSize: Theme.fontSmall
                             }
 
                             Label {
