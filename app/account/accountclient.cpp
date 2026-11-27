@@ -4,8 +4,12 @@
 #include "devicekey.h"
 #include "vault.h"
 
+#include <QCryptographicHash>
 #include <QJsonDocument>
 #include <QJsonValue>
+#include <QSslCertificate>
+#include <QSslConfiguration>
+#include <QSslError>
 #include <QNetworkAccessManager>
 #include <QNetworkCookieJar>
 #include <QNetworkReply>
@@ -101,6 +105,22 @@ AccountClient::AccountClient(Vault *vault, QObject *parent) :
     // setCookieJar() takes ownership; no parent to avoid a double delete.
     m_nam->setCookieJar(new NoCookieJar(nullptr));
 
+#if QT_VERSION >= QT_VERSION_CHECK(5, 4, 0)
+    connect(m_nam, &QNetworkAccessManager::sslErrors, this,
+            [](QNetworkReply *reply, const QList<QSslError> &errors) {
+                const QSslCertificate certificate =
+                    reply->sslConfiguration().peerCertificate();
+                const QByteArray digest =
+                    certificate.digest(QCryptographicHash::Sha256);
+                if (AccountClient::isPinnedCertificate(digest)) {
+                    reply->ignoreSslErrors(errors);
+                }
+                else {
+                    qWarning() << "TLS: rejected an unpinned server certificate";
+                }
+            });
+#endif
+
     connect(m_nam, &QNetworkAccessManager::finished, this,
             [this](QNetworkReply *reply) {
                 const auto it = m_pending.find(reply);
@@ -136,6 +156,25 @@ QString AccountClient::apiBaseUrl()
 #else
     return QStringLiteral("https://legiongames.ru/app/v1");
 #endif
+}
+
+bool AccountClient::isPinnedCertificate(const QByteArray &digest)
+{
+#ifdef LG_STAGING_BUILD
+    const QByteArray pins[] = {
+        QByteArray::fromHex("c9a383ecbca6e717e617f2f7053716b575cff567459b2d7d11f4ea622e654805"),
+    };
+#else
+    const QByteArray pins[] = {
+        QByteArray::fromHex("5fb3ae1b4788c3da5ee752e78f83ddd9ff99da54b2d412b854c64c1274b2e150"),
+    };
+#endif
+    for (const QByteArray &pin : pins) {
+        if (!pin.isEmpty() && digest == pin) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool AccountClient::isRetryableRequest(const QByteArray &method, bool networkError,

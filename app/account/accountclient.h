@@ -60,6 +60,7 @@ public:
     static QByteArray buildProof(DeviceKey *key, const QByteArray &body, const QString &method,
                                  const QString &path, QString *errorCode);
     static bool isRetryableRequest(const QByteArray &method, bool networkError, int httpStatus);
+    static bool isPinnedCertificate(const QByteArray &digest);
 
     void setDeviceKey(DeviceKey *key);
     DeviceKey *deviceKey() const { return m_deviceKey; }

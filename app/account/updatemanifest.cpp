@@ -32,6 +32,18 @@ static const unsigned char kPlaceholderKey[32] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
+#ifdef LG_STAGING_BUILD
+// Staging-only update trust anchor. The private key lives outside the repo in
+// the deployment secret store; production builds keep the fail-closed
+// placeholder until the production key is installed.
+static const unsigned char kStagingKey[32] = {
+    0x90, 0x44, 0xa5, 0x78, 0x26, 0x7a, 0xd5, 0x46,
+    0xfa, 0x52, 0x77, 0xe7, 0x27, 0x07, 0x48, 0x33,
+    0xa0, 0xd6, 0x58, 0xc7, 0xa6, 0xf1, 0x58, 0xb9,
+    0xba, 0x5d, 0xa0, 0xa4, 0x10, 0x2a, 0x78, 0xb3,
+};
+#endif
+
 namespace {
 
 struct PinnedKey
@@ -41,7 +53,11 @@ struct PinnedKey
 };
 
 const PinnedKey kUpdateKeys[] = {
+#ifdef LG_STAGING_BUILD
+    { "stg-2026-01", kStagingKey },
+#else
     { "prod-2026-01", kPlaceholderKey },
+#endif
 };
 
 bool isPlaceholder(const QByteArray &key)
