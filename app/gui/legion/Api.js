@@ -13,7 +13,7 @@
 //   logout, confirmWordsSaved, reissueWords, reprintRecoveryKit, recoverComplete,
 //   refreshMe, getClubs, getClub, getWallet, createTopup, pollIntent,
 //   reissueHandoff, startSession, getCurrentSession, stopSession,
-//   extendSession, reconnectSession, connectProof, getQueue, joinQueue,
+//   reconnectSession, connectProof, getQueue, joinQueue,
 //   leaveQueue, claimQueue,
 //   getLegalDocuments, deleteAccount, openExternal, openLogFolder,
 //   retryFailedStep
@@ -24,7 +24,7 @@
 //
 // Response ops handled by the UI:
 //   clubs, club, wallet, topup, intent, handoff, session_start,
-//   session_current, session_stop, session_extend, session_reconnect, queue,
+//   session_current, session_stop, session_reconnect, queue,
 //   queue_join, queue_leave, queue_claim, confirm_words, refresh_me,
 //   account_delete, legal_documents, kit, open_logs
 // getWalletHistory / `wallet_history` exists on the backend but has no UI
@@ -210,10 +210,6 @@ function getSessionHistory(api) {
 
 function stopSession(api, id) {
     return call1(api, "stopSession", id)
-}
-
-function extendSession(api, id, amount) {
-    return call2(api, "extendSession", id, amount)
 }
 
 function reconnectSession(api, id) {
@@ -773,7 +769,6 @@ function opTitle(op) {
     case "session_start":
     case "session_current":
     case "session_stop":
-    case "session_extend":
     case "session_reconnect":
         return "Сессия"
     case "queue":

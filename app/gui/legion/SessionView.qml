@@ -21,9 +21,6 @@ LegionView {
     property string connectStage: ""
     property string connectError: ""
     property bool stopping: false
-    property bool extending: false
-    property bool extendOpen: false
-    property int extendAmount: 200
     property bool summaryVisible: false
 
     readonly property var session: shell ? shell.session : null
@@ -54,7 +51,6 @@ LegionView {
     function activate() {
         summaryVisible = false
         stopping = false
-        extending = false
         connectError = ""
         if (shell) {
             shell.refreshSession()
@@ -121,14 +117,6 @@ LegionView {
         Api.stopSession(api, session.id)
     }
 
-    function extend() {
-        if (!session || extending) {
-            return
-        }
-        extending = true
-        Api.extendSession(api, session.id, String(extendAmount) + ".00")
-    }
-
     Connections {
         target: sessionView.shell
         ignoreUnknownSignals: true
@@ -153,16 +141,6 @@ LegionView {
                     sessionView.shell.refreshWallet(true)
                 }
             }
-            else if (op === "session_extend") {
-                sessionView.extending = false
-                var publicId = data && data.public_id ? String(data.public_id) : ""
-                var handoff = data && data.handoff_url ? String(data.handoff_url) : ""
-                if (publicId.length > 0) {
-                    sessionView.go("qrc:/gui/legion/PaymentView.qml",
-                                   { publicId: publicId, handoffUrl: handoff, purpose: "extend",
-                                     clubId: sessionView.session ? sessionView.session.club_id : -1 })
-                }
-            }
             else if (op === "session_reconnect") {
                 sessionView.connectError = ""
             }
@@ -175,10 +153,6 @@ LegionView {
                 if (sessionView.shell) {
                     sessionView.shell.refreshSession(true)
                 }
-            }
-            else if (op === "session_extend") {
-                sessionView.extending = false
-                sessionView.showError(code, message, op)
             }
             else if (op === "session_reconnect" || op === "session_current") {
                 sessionView.showError(code, message, op)
@@ -505,14 +479,6 @@ LegionView {
 
                         LegionButton {
                             kind: "secondary"
-                            visible: sessionView.active
-                            enabled: !sessionView.extending && !sessionView.stopping
-                            text: qsTr("Продлить")
-                            onClicked: sessionView.extendOpen = !sessionView.extendOpen
-                        }
-
-                        LegionButton {
-                            kind: "secondary"
                             visible: sessionView.hasSession && !sessionView.finished
                             enabled: !sessionView.stopping
                             text: sessionView.stopping ? qsTr("Завершаем…") : qsTr("Завершить")
@@ -541,37 +507,6 @@ LegionView {
                         }
                     }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        visible: sessionView.extendOpen && sessionView.active
-                        spacing: Theme.spaceS
-
-                        Label {
-                            text: qsTr("Продлить на")
-                            color: Theme.textMuted
-                            font.pointSize: Theme.fontBody
-                        }
-
-                        Repeater {
-                            model: [100, 200, 500]
-
-                            delegate: LegionButton {
-                                kind: sessionView.extendAmount === modelData ? "primary" : "secondary"
-                                compact: true
-                                text: qsTr("%1 ₽").arg(modelData)
-                                onClicked: sessionView.extendAmount = modelData
-                            }
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        LegionButton {
-                            kind: "primary"
-                            enabled: !sessionView.extending
-                            text: sessionView.extending ? qsTr("Переходим к оплате…") : qsTr("Перейти к оплате")
-                            onClicked: sessionView.extend()
-                        }
-                    }
                 }
             }
 

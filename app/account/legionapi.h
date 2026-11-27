@@ -101,7 +101,6 @@ public:
     Q_INVOKABLE void getCurrentSession();
     Q_INVOKABLE void getSessionHistory();
     Q_INVOKABLE void stopSession(const QString &id);
-    Q_INVOKABLE void extendSession(const QString &id, const QString &amount);
     Q_INVOKABLE void reconnectSession(const QString &id);
 
     Q_INVOKABLE void getQueue();
