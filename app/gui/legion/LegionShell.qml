@@ -110,6 +110,7 @@ Item {
     readonly property int walletCacheTtlMs: 10000
     readonly property int sessionCacheTtlMs: 5000
     readonly property int queueCacheTtlMs: 3000
+    property int queuePollInterval: 5000
 
     property double catalogFetchedAt: 0
     property var clubFetchedAt: ({})
@@ -638,6 +639,7 @@ Item {
                     return
                 }
                 shell.queueInFlight = false
+                shell.queuePollInterval = 5000
                 shell.queueFetchedAt = Date.now()
                 shell.queueEntry = Api.entryOf(data)
                 if (shell.queueDirty) {
@@ -698,6 +700,7 @@ Item {
             else if (op === "queue") {
                 shell.queueInFlight = false
                 shell.queueDirty = false
+                shell.queuePollInterval = Math.min(shell.queuePollInterval * 2, 30000)
             }
             else if (op === "session_history") {
                 shell.sessionHistoryInFlight = false
@@ -770,7 +773,7 @@ Item {
 
     Timer {
         id: queueTimer
-        interval: 5000
+        interval: shell.queuePollInterval
         repeat: true
         running: shell.mode === "app" && shell.windowVisible &&
                  shell.queueEntry !== null &&
