@@ -689,13 +689,23 @@ function errorText(code, message) {
         text = "Не удалось подтвердить согласие. Повторите регистрацию."
         break
     case "legal_unavailable":
-        text = "Не удалось открыть документы. Проверьте соединение."
+    case "legal_documents_unavailable":
+        text = "Django недоступен. Документы и оплата временно не работают."
         break
     case "invalid_response":
         text = "Сервер вернул неожиданный ответ. Повторите попытку."
         break
     case "unexpected_redirect":
         text = "Сервер перенаправил запрос. Проверьте адрес API."
+        break
+    case "network_error":
+        text = "Нет соединения с Django. Проверьте интернет."
+        break
+    case "timeout":
+        text = "Django не ответил вовремя. Попробуйте ещё раз."
+        break
+    case "internal_error":
+        text = "Внутренняя ошибка Django. Попробуйте позже."
         break
     case "vault_unavailable":
         text = "Не удалось открыть хранилище ключей. Аккаунт недоступен."

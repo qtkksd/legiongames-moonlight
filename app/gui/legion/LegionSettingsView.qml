@@ -123,6 +123,7 @@ LegionView {
             ErrorBanner {
                 width: parent.width
                 visible: settings.updateRequired
+                tone: "danger"
                 text: qsTr("Обновите приложение, чтобы продолжить.")
                 detail: qsTr("Эта версия больше не поддерживается сервером.")
                 canRetry: false
@@ -131,6 +132,7 @@ LegionView {
             ErrorBanner {
                 width: parent.width
                 visible: settings.offline
+                tone: "warning"
                 text: qsTr("Нет соединения. Проверьте интернет.")
                 detail: qsTr("Без сети клубы, сессии и оплата недоступны.")
                 canRetry: true

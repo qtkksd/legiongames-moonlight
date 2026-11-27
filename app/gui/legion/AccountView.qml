@@ -196,7 +196,8 @@ LegionView {
 
             ErrorBanner {
                 width: parent.width
-                visible: account.hasError
+                visible: account.hasInlineError
+                tone: account.errorTone
                 text: account.errorText
                 detail: account.serverError
                 canRetry: true

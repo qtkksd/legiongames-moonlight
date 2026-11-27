@@ -67,6 +67,44 @@ var fontCardTitle = fontSubtitle
 var fontSectionTitle = fontTitle
 var fontPageTitle = fontHeader
 
+// Notification accents. The border and the short title/icon carry the tone;
+// body copy stays readable instead of turning red/green.
+function noticeColor(tone) {
+    if (tone === "success") {
+        return success
+    }
+    if (tone === "warning") {
+        return warning
+    }
+    if (tone === "info") {
+        return textMuted
+    }
+    return error
+}
+
+function noticeBackground(tone) {
+    if (tone === "success") {
+        return "#12251a"
+    }
+    if (tone === "warning") {
+        return "#2a2110"
+    }
+    if (tone === "info") {
+        return "#1a1a1a"
+    }
+    return "#221414"
+}
+
+function noticeIcon(tone) {
+    if (tone === "success") {
+        return "✓"
+    }
+    if (tone === "info") {
+        return "i"
+    }
+    return "!"
+}
+
 // Catalog data older than this many seconds disables start and payment.
 var staleSeconds = 600
 

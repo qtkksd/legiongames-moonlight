@@ -206,6 +206,12 @@ LegionView {
             sessionView.connecting = false
             sessionView.connectProgress = 100
             sessionView.connectStage = qsTr("Подключено")
+            if (sessionView.shell && sessionView.shell.notifications) {
+                sessionView.shell.notifications.notifySuccess(
+                    qsTr("Подключено"),
+                    qsTr("Компьютер готов к игре."),
+                    "")
+            }
             sessionView.openComputerList()
         }
     }
@@ -465,7 +471,8 @@ LegionView {
 
                     ErrorBanner {
                         Layout.fillWidth: true
-                        visible: sessionView.hasError
+                        visible: sessionView.hasInlineError
+                        tone: sessionView.errorTone
                         text: sessionView.errorText
                         detail: sessionView.serverError
                         canRetry: true

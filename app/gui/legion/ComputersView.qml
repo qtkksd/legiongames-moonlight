@@ -175,7 +175,8 @@ LegionView {
 
             ErrorBanner {
                 width: parent.width
-                visible: computers.hasError
+                visible: computers.hasInlineError
+                tone: computers.errorTone
                 text: computers.errorText
                 canRetry: false
             }

@@ -306,7 +306,8 @@ LegionView {
 
                 ErrorBanner {
                     Layout.fillWidth: true
-                    visible: recovery.hasError
+                    visible: recovery.hasInlineError
+                    tone: recovery.errorTone
                     text: recovery.errorText
                     detail: recovery.serverError
                     canRetry: true

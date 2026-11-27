@@ -2,6 +2,7 @@ import QtQuick 2.9
 import QtQuick.Controls 2.2
 
 import "Api.js" as Api
+import "Notice.js" as Notice
 import "Theme.js" as Theme
 
 // Base item for every LegionGames page.
@@ -47,8 +48,16 @@ Item {
     property string errorCode: ""
     property string errorMessage: ""
     property string errorOp: ""
+    property string errorPresentation: "inline"
+    property string errorTone: "danger"
 
     readonly property bool hasError: errorCode.length > 0 || errorMessage.length > 0
+    // Inline notices are rendered by the page. Banner/popup/full-page
+    // presentations are owned by the shell or by the global notification host.
+    readonly property bool hasInlineError: hasError &&
+                                           (errorPresentation === "inline" ||
+                                            errorPresentation === "fullPage" ||
+                                            !shell || !shell.notifications)
     readonly property string errorText: hasError
                                         ? Api.errorTextFor(errorOp, errorCode, errorMessage)
                                         : ""
@@ -68,12 +77,29 @@ Item {
         errorCode = code ? String(code) : ""
         errorMessage = message ? String(message) : ""
         errorOp = op ? String(op) : ""
+        errorPresentation = Notice.presentationFor(errorCode)
+        errorTone = Notice.toneFor(errorCode)
+
+        if (shell && shell.notifications &&
+                (errorPresentation === "banner" || errorPresentation === "popup")) {
+            var action = null
+            if (errorCode === "queue_deadline_expired") {
+                action = function() {
+                    if (shell) {
+                        shell.showSection("clubs")
+                    }
+                }
+            }
+            shell.notifications.notifyError(errorCode, errorMessage, errorOp, action)
+        }
     }
 
     function clearError() {
         errorCode = ""
         errorMessage = ""
         errorOp = ""
+        errorPresentation = "inline"
+        errorTone = "danger"
     }
 
     function openUrl(url) {

@@ -3,6 +3,7 @@ import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 
 import "Api.js" as Api
+import "Notice.js" as Notice
 import "Theme.js" as Theme
 
 // Public club catalog. Read-only data from the server: prices, availability
@@ -31,6 +32,8 @@ LegionView {
     readonly property string loadErrorCode: shell ? shell.catalogErrorCode : ""
     readonly property string loadErrorMessage: shell ? shell.catalogErrorMessage : ""
     readonly property bool loading: shell ? shell.catalogLoading : false
+    readonly property bool djangoDown: Notice.isDjangoDown(loadErrorCode)
+    readonly property bool rateLimited: loadErrorCode === "rate_limited"
 
     function activate() {
         if (shell) {
@@ -124,7 +127,8 @@ LegionView {
         ErrorBanner {
             Layout.fillWidth: true
             Layout.preferredHeight: implicitHeight
-            visible: clubs.loadErrorCode.length > 0
+            visible: clubs.loadErrorCode.length > 0 && !clubs.djangoDown &&
+                     !clubs.rateLimited
             text: Api.errorTextFor("clubs", clubs.loadErrorCode, clubs.loadErrorMessage)
             canRetry: true
             onRetry: clubs.refresh()
@@ -134,6 +138,7 @@ LegionView {
             Layout.fillWidth: true
             Layout.preferredHeight: implicitHeight
             visible: clubs.stale && clubs.rows.length > 0
+            tone: "warning"
             text: qsTr("Данные устарели. Обновите список.")
             detail: qsTr("Цены и доступность показаны по состоянию на %1. Запуск и оплата отключены.").arg(Theme.timeText(updatedAt))
             canRetry: true

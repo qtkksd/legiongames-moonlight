@@ -198,7 +198,8 @@ LegionView {
 
             ErrorBanner {
                 width: parent.width
-                visible: wallet.hasError
+                visible: wallet.hasInlineError
+                tone: wallet.errorTone
                 text: wallet.errorText
                 detail: wallet.serverError
                 canRetry: true

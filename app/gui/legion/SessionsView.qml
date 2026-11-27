@@ -296,7 +296,9 @@ LegionView {
 
                     ErrorBanner {
                         Layout.fillWidth: true
-                        visible: sessions.historyError.length > 0
+                        visible: sessions.historyError.length > 0 &&
+                                 sessions.hasInlineError
+                        tone: sessions.errorTone
                         text: Api.errorText(sessions.historyError, sessions.serverError)
                         detail: sessions.serverError
                         canRetry: true

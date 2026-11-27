@@ -162,12 +162,21 @@ LegionView {
     }
 
     function finishWith(status) {
+        var wasSucceeded = stage === "succeeded"
         pollTimer.stop()
         intentStatus = status
         if (status === "succeeded") {
             stage = "succeeded"
             if (shell) {
                 shell.refreshWallet(true)
+                if (!wasSucceeded && shell.notifications) {
+                    shell.notifications.notifySuccess(
+                        qsTr("Баланс пополнен"),
+                        qsTr("Деньги зачислены на баланс клуба."),
+                        payment.intentAmount.length > 0
+                            ? qsTr("Сумма: %1").arg(Theme.money(payment.intentAmount))
+                            : "")
+                }
             }
         }
         else if (status === "failed") {
@@ -474,7 +483,8 @@ LegionView {
 
                     ErrorBanner {
                         Layout.fillWidth: true
-                        visible: payment.hasError && payment.stage === "form"
+                        visible: payment.hasInlineError && payment.stage === "form"
+                        tone: payment.errorTone
                         text: payment.errorText
                         detail: payment.serverError
                         canRetry: payment.canPay
@@ -578,7 +588,8 @@ LegionView {
 
                     ErrorBanner {
                         Layout.fillWidth: true
-                        visible: payment.hasError
+                        visible: payment.hasInlineError
+                        tone: payment.errorTone
                         text: payment.errorText
                         detail: payment.serverError
                         canRetry: true

@@ -117,7 +117,8 @@ LegionView {
 
             ErrorBanner {
                 width: parent.width
-                visible: apps.hasError
+                visible: apps.hasInlineError
+                tone: apps.errorTone
                 text: apps.errorText
                 canRetry: false
             }

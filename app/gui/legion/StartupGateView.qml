@@ -167,6 +167,7 @@ LegionView {
 
     ErrorBanner {
         visible: gate.serverErrorCode === "client_update_required"
+        tone: "warning"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

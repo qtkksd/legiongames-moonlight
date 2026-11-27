@@ -533,6 +533,7 @@ LegionView {
             ErrorBanner {
                 width: parent.width
                 visible: home.stale && home.catalog.length > 0
+                tone: "warning"
                 text: qsTr("Данные устарели. Обновите список.")
                 detail: qsTr("Цены и доступность показаны по состоянию на %1.").arg(Theme.timeText(home.updatedAt))
                 canRetry: true

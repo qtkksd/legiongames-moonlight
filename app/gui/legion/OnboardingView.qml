@@ -403,7 +403,8 @@ LegionView {
 
                 ErrorBanner {
                     Layout.fillWidth: true
-                    visible: onboarding.hasError
+                    visible: onboarding.hasInlineError
+                    tone: onboarding.errorTone
                     text: onboarding.errorText
                     detail: onboarding.serverError
                     canRetry: true

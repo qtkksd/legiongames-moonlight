@@ -3,6 +3,7 @@ import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 
 import "Api.js" as Api
+import "Notice.js" as Notice
 import "Theme.js" as Theme
 
 // Root of the app-first product: startup gate, onboarding, rail shell.
@@ -31,6 +32,8 @@ Item {
     readonly property string lastError: api ? (api.lastError || "") : ""
     readonly property string lastErrorCode: api ? (api.lastErrorCode || "") : ""
     readonly property string catalogUpdatedAt: api ? (api.catalogUpdatedAt || "") : ""
+    readonly property var notifications: notificationCenter
+    property string lastQueueStatus: ""
 
     readonly property bool windowVisible: {
         try {
@@ -494,6 +497,22 @@ Item {
     onAppStateChanged: syncWords()
     onOnboardingStepChanged: syncWords()
 
+    onQueueEntryChanged: {
+        var status = queueEntry ? String(queueEntry.status || "") : ""
+        if (status === "notified" && lastQueueStatus !== "notified" &&
+                shell.notifications) {
+            shell.notifications.notifySuccess(
+                qsTr("Слот готов"),
+                qsTr("Можно подключаться к компьютеру. Слот ждёт подтверждения."),
+                "",
+                function() {
+                    shell.navigate("qrc:/gui/legion/QueueView.qml", {})
+                },
+                "popup")
+        }
+        lastQueueStatus = status
+    }
+
     Connections {
         target: shell.api
         ignoreUnknownSignals: true
@@ -647,6 +666,19 @@ Item {
             }
         }
 
+        function onLastErrorChanged() {
+            if (shell.mode !== "app") {
+                return
+            }
+            if (shell.notifications &&
+                    (Notice.isDjangoDown(shell.lastErrorCode) ||
+                     shell.lastErrorCode === "client_update_required" ||
+                     shell.lastErrorCode === "rate_limited")) {
+                shell.notifications.notifyError(
+                    shell.lastErrorCode, shell.lastError, "global")
+            }
+        }
+
         function onWordsReady(handle, words) {
             shell.wordsHandle = handle ? String(handle) : shell.handle
             shell.wordsList = words ? words : []
@@ -731,42 +763,6 @@ Item {
                 anchors.fill: parent
                 spacing: 0
 
-                Column {
-                    Layout.fillWidth: true
-                    Layout.leftMargin: Theme.spaceXl
-                    Layout.rightMargin: Theme.spaceXl
-                    Layout.topMargin: Theme.spaceL
-                    spacing: Theme.spaceS
-
-                    ErrorBanner {
-                        width: parent.width
-                        visible: shell.appState === "offline" || shell.lastErrorCode === "offline"
-                        text: qsTr("Нет соединения. Проверьте интернет.")
-                        detail: qsTr("Данные на экране могли устареть.")
-                        canRetry: true
-                        onRetry: Api.retryFailedStep(shell.api)
-                    }
-
-                    ErrorBanner {
-                        width: parent.width
-                        visible: shell.lastErrorCode === "client_update_required"
-                        text: qsTr("Обновите приложение, чтобы продолжить.")
-                        detail: qsTr("Текущая версия больше не поддерживается сервером.")
-                        canRetry: false
-                    }
-
-                    ErrorBanner {
-                        width: parent.width
-                        visible: shell.lastErrorCode === "unauthenticated" ||
-                                 shell.lastErrorCode === "device_revoked" ||
-                                 shell.lastErrorCode === "consent_version_mismatch"
-                        text: Api.errorText(shell.lastErrorCode, shell.lastError)
-                        detail: ""
-                        canRetry: shell.lastErrorCode !== "device_revoked"
-                        onRetry: Api.retryFailedStep(shell.api)
-                    }
-                }
-
                 Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -785,6 +781,18 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // ---- notifications --------------------------------------------------
+
+    NotificationCenter {
+        id: notificationCenter
+        anchors.fill: parent
+        shell: shell
+        z: 45
+        retryAction: function() {
+            Api.retryFailedStep(shell.api)
         }
     }
 

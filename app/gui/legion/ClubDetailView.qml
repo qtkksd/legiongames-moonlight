@@ -313,7 +313,8 @@ LegionView {
 
             ErrorBanner {
                 width: parent.width
-                visible: detail.hasError
+                visible: detail.hasInlineError
+                tone: detail.errorTone
                 text: detail.errorText
                 detail: detail.serverError
                 canRetry: detail.canPlay || detail.canQueue
@@ -330,6 +331,7 @@ LegionView {
             ErrorBanner {
                 width: parent.width
                 visible: detail.stale
+                tone: "warning"
                 text: qsTr("Данные устарели. Обновите список.")
                 detail: qsTr("Цены и доступность показаны по состоянию на %1.").arg(Theme.timeText(detail.updatedAt))
                 canRetry: true

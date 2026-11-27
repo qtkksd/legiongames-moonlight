@@ -232,7 +232,8 @@ LegionView {
 
                 ErrorBanner {
                     Layout.fillWidth: true
-                    visible: words.hasError
+                    visible: words.hasInlineError
+                    tone: words.errorTone
                     text: words.errorText
                     canRetry: false
                 }
