@@ -203,10 +203,20 @@ ApplicationWindow {
     // The header is outside the content overlay, so hiding only the StackView
     // would still leave the red ToolBar visible for a frame.
     function refreshChrome() {
+        // This can be reached from an early property-change handler while the
+        // rest of the window is still being constructed.
+        if (!uiReady || !toolBar || !stackView) {
+            return
+        }
+        toolBar.height = splashVisible ? 0 : 60
         toolBar.visible = !splashVisible && !legionShellShown()
     }
 
-    onSplashVisibleChanged: refreshChrome()
+    onSplashDismissedChanged: {
+        if (uiReady) {
+            refreshChrome()
+        }
+    }
 
     StackView {
         id: stackView
@@ -215,7 +225,6 @@ ApplicationWindow {
         // The splash is an opaque launch screen. Do not render the
         // startup/checking page underneath it for the first frame.
         visible: !window.splashVisible
-        enabled: !window.splashVisible
 
         Component.onCompleted: {
             // Perform our early initialization before constructing
@@ -484,9 +493,10 @@ ApplicationWindow {
     header: ToolBar {
         id: toolBar
         // The launch screen must not expose the legacy red Material header.
-        // Height binds to the splash so the content overlay fills the window.
+        // Height is applied by refreshChrome() after uiReady, not by a binding
+        // that can be evaluated while the window tree is still incomplete.
         visible: false
-        height: window.splashVisible ? 0 : 60
+        height: 0
         anchors.topMargin: 5
         anchors.bottomMargin: 5
 
