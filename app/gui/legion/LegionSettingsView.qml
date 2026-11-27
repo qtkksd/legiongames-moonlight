@@ -443,23 +443,27 @@ LegionView {
                         wrapMode: Text.Wrap
                     }
 
-                    TextArea {
+                    LegionScrollView {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 120
-                        readOnly: true
-                        selectByMouse: true
-                        wrapMode: TextArea.Wrap
-                        color: Theme.text
-                        font.pointSize: Theme.fontSmall
-                        font.family: "monospace"
-                        text: "app: " + SystemProperties.versionString + "+" +
-                              SystemProperties.commitString.substring(0, 7) + "\n" +
-                              "platform: " + settings.platformName + "\n" +
-                              "arch: " + SystemProperties.friendlyNativeArchName + "\n" +
-                              "account: " + (settings.handle.length > 0 ? settings.handle : "none") + "\n" +
-                              "state: " + (settings.appState.length > 0 ? settings.appState : "unknown") + "\n" +
-                              "vault: " + (settings.vaultPath.length > 0 ? settings.vaultPath : "unavailable") + "\n" +
-                              "last_error: " + (settings.serverErrorCode.length > 0 ? settings.serverErrorCode : "none")
+
+                        TextArea {
+                            width: parent.width
+                            readOnly: true
+                            selectByMouse: true
+                            wrapMode: TextArea.Wrap
+                            color: Theme.text
+                            font.pointSize: Theme.fontSmall
+                            font.family: "monospace"
+                            text: "app: " + SystemProperties.versionString + "+" +
+                                  SystemProperties.commitString.substring(0, 7) + "\n" +
+                                  "platform: " + settings.platformName + "\n" +
+                                  "arch: " + SystemProperties.friendlyNativeArchName + "\n" +
+                                  "account: " + (settings.handle.length > 0 ? settings.handle : "none") + "\n" +
+                                  "state: " + (settings.appState.length > 0 ? settings.appState : "unknown") + "\n" +
+                                  "vault: " + (settings.vaultPath.length > 0 ? settings.vaultPath : "unavailable") + "\n" +
+                                  "last_error: " + (settings.serverErrorCode.length > 0 ? settings.serverErrorCode : "none")
+                        }
                     }
 
                     RowLayout {
