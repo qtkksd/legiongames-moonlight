@@ -11,6 +11,8 @@ ScrollBar {
     id: control
 
     policy: ScrollBar.AsNeeded
+    visible: policy === ScrollBar.AlwaysOn ||
+             (policy === ScrollBar.AsNeeded && size < 0.999)
     width: Theme.scrollbarWidth
     padding: 0
 
