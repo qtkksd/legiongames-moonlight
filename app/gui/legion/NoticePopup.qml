@@ -21,7 +21,6 @@ Dialog {
     // Do not use the platform dim: NotificationCenter renders the product
     // scrim/blur behind this dialog.
     dim: false
-    parent: Overlay.overlay
     width: Math.min(650, parent ? parent.width - Theme.spaceXl * 2 : 650)
     padding: Theme.spaceXl
     closePolicy: Popup.CloseOnEscape
@@ -51,21 +50,17 @@ Dialog {
         }
     }
 
-    function centerInWindow() {
-        var overlay = Overlay.overlay
-        if (!overlay) {
+    function centerInParent() {
+        if (!parent) {
             return
         }
-        if (parent !== overlay) {
-            parent = overlay
-        }
-        x = Math.round((overlay.width - width) / 2)
-        y = Math.round((overlay.height - height) / 2)
+        x = Math.round((parent.width - width) / 2)
+        y = Math.round((parent.height - height) / 2)
     }
 
-    onOpened: centerInWindow()
-    onWidthChanged: if (visible) centerInWindow()
-    onHeightChanged: if (visible) centerInWindow()
+    onOpened: centerInParent()
+    onWidthChanged: if (visible) centerInParent()
+    onHeightChanged: if (visible) centerInParent()
 
     background: Rectangle {
         color: Theme.panel
@@ -121,28 +116,35 @@ Dialog {
         }
     }
 
-    footer: RowLayout {
+    footer: Item {
         width: dialog.availableWidth
-        spacing: Theme.spaceM
+        implicitHeight: footerRow.implicitHeight + Theme.spaceM * 2
 
-        Item { Layout.fillWidth: true }
+        RowLayout {
+            id: footerRow
+            anchors.fill: parent
+            anchors.margins: Theme.spaceM
+            spacing: Theme.spaceM
 
-        LegionButton {
-            kind: "secondary"
-            text: qsTr("Закрыть")
-            onClicked: dialog.close()
-        }
+            Item { Layout.fillWidth: true }
 
-        LegionButton {
-            visible: !!(dialog.notice && dialog.notice.actionText)
-            kind: "primary"
-            text: dialog.notice && dialog.notice.actionText
-                  ? String(dialog.notice.actionText) : ""
-            onClicked: {
-                var action = dialog.notice ? dialog.notice.action : null
-                dialog.close()
-                if (typeof action === "function") {
-                    action()
+            LegionButton {
+                kind: "secondary"
+                text: qsTr("Закрыть")
+                onClicked: dialog.close()
+            }
+
+            LegionButton {
+                visible: !!(dialog.notice && dialog.notice.actionText)
+                kind: "primary"
+                text: dialog.notice && dialog.notice.actionText
+                      ? String(dialog.notice.actionText) : ""
+                onClicked: {
+                    var action = dialog.notice ? dialog.notice.action : null
+                    dialog.close()
+                    if (typeof action === "function") {
+                        action()
+                    }
                 }
             }
         }
