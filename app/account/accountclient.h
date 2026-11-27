@@ -24,6 +24,10 @@ struct ApiResult
     QString message;
     QString requestId;
     bool networkError = false;
+    // Transport metadata for the request-policy layer. A GET may be retried
+    // automatically; a mutation must use the same idempotency key instead.
+    bool retryable = false;
+    int retryAfterSeconds = 0;
 };
 
 // JSON client for the LegionGames app API. The base URL defaults to

@@ -511,6 +511,14 @@ void AccountClient::handleReply(QNetworkReply *reply, const Pending &pending)
         reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
     result.httpStatus = statusAttribute.toInt();
     result.requestId = QString::fromUtf8(reply->rawHeader("X-Request-Id"));
+    const QByteArray retryAfterHeader = reply->rawHeader("Retry-After").trimmed();
+    if (!retryAfterHeader.isEmpty()) {
+        bool ok = false;
+        const int seconds = retryAfterHeader.toInt(&ok);
+        if (ok && seconds > 0) {
+            result.retryAfterSeconds = seconds;
+        }
+    }
 
     const QByteArray payload = reply->readAll();
     const bool transportFailure =
@@ -597,6 +605,15 @@ void AccountClient::handleReply(QNetworkReply *reply, const Pending &pending)
             result.message = defaultMessageForCode(result.errorCode);
         }
     }
+
+    if (result.retryAfterSeconds <= 0) {
+        result.retryAfterSeconds = result.json.value(QStringLiteral("retry_after")).toInt();
+    }
+    // Reads are safe to retry on transport/5xx/429 failures. Mutations are
+    // deliberately never marked retryable here; their caller must reuse the
+    // same client request id.
+    result.retryable = pending.method == QLatin1String("GET") &&
+            (result.networkError || result.httpStatus == 429 || result.httpStatus >= 500);
 
     reply->deleteLater();
 
