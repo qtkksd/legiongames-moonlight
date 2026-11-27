@@ -730,11 +730,6 @@ void ComputerManager::quitRunningApp(NvComputer* computer)
     QThreadPool::globalInstance()->start(quit);
 }
 
-void ComputerManager::startLegionConnect(QString code, QString proof)
-{
-    m_LegionConnect->start(code, proof);
-}
-
 void ComputerManager::startLegionConnectWithData(const QVariantMap &data)
 {
     m_LegionConnect->startWithPayload(data);

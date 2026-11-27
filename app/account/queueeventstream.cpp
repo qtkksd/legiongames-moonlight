@@ -41,6 +41,7 @@ void QueueEventStream::stop()
     cleanupReply();
     m_token.clear();
     m_buffer.clear();
+    m_lastEventId.clear();
 }
 
 void QueueEventStream::openConnection()
@@ -55,7 +56,10 @@ void QueueEventStream::openConnection()
     QNetworkRequest request(url);
     request.setRawHeader("Accept", "text/event-stream");
     request.setRawHeader("Cache-Control", "no-cache");
-    request.setRawHeader("Cookie", "__Host-lgsession=" + m_token);
+    request.setRawHeader("Authorization", "Bearer " + m_token);
+    if (!m_lastEventId.isEmpty()) {
+        request.setRawHeader("Last-Event-ID", m_lastEventId);
+    }
     request.setRawHeader("User-Agent", "LegionGames-Moonlight-SSE");
 
     m_buffer.clear();
@@ -80,17 +84,33 @@ void QueueEventStream::readAvailable()
         m_buffer.remove(0, end + 2);
 
         QString eventName = QStringLiteral("message");
+        QByteArray eventId;
         QByteArray data;
-        for (const QByteArray &line : block.split('\n')) {
-            if (line.startsWith("event:")) {
-                eventName = QString::fromUtf8(line.mid(6).trimmed());
+        for (const QByteArray &rawLine : block.split('\n')) {
+            if (rawLine.startsWith(':')) {
+                continue;
             }
-            else if (line.startsWith("data:")) {
+            const int colon = rawLine.indexOf(':');
+            const QByteArray field = colon < 0 ? rawLine : rawLine.left(colon);
+            QByteArray value = colon < 0 ? QByteArray() : rawLine.mid(colon + 1);
+            if (value.startsWith(' ')) {
+                value.remove(0, 1);
+            }
+            if (field == "event") {
+                eventName = QString::fromUtf8(value.trimmed());
+            }
+            else if (field == "id") {
+                eventId = value.trimmed();
+            }
+            else if (field == "data") {
                 if (!data.isEmpty()) {
                     data += '\n';
                 }
-                data += line.mid(5).trimmed();
+                data += value;
             }
+        }
+        if (!eventId.isEmpty()) {
+            m_lastEventId = eventId;
         }
         if (data.isEmpty()) {
             continue;
@@ -107,13 +127,18 @@ void QueueEventStream::handleFinished()
     if (m_reply == nullptr) {
         return;
     }
+    const int httpStatus = m_reply->attribute(
+        QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QString error = m_reply->errorString();
     const bool hadError = m_reply->error() != QNetworkReply::NoError;
     cleanupReply();
     if (m_stopping) {
         return;
     }
-    if (hadError) {
+    if (httpStatus == 401 || httpStatus == 403) {
+        emit failed(QStringLiteral("sse_unauthorized"), error);
+    }
+    else if (hadError) {
         emit failed(QStringLiteral("sse_error"), error);
     }
     scheduleReconnect();

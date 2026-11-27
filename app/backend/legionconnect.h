@@ -28,7 +28,6 @@ class LegionConnect : public QObject
 public:
     explicit LegionConnect(ComputerManager* manager, QObject* parent = nullptr);
 
-    void start(const QString& code, const QString& proof = QString());
     void startWithPayload(const QVariantMap& data);
     void disconnect();
 
@@ -46,7 +45,7 @@ signals:
 private:
     enum Stage {
         Idle,
-        ExchangingCode,
+        Preparing,
         NetbirdDown,
         NetbirdListProfiles,
         NetbirdSelectPrev,
@@ -60,7 +59,6 @@ private:
 
     void fail(const QString& error);
     void runNetbird(const QStringList& args, Stage stage);
-    void downloadSetupKeyFromReply(QNetworkReply* reply);
     void applyConnectPayload(const QJsonObject& object);
     bool prepareSetupKeyFile();
     void cleanupSetupKeyFile();
@@ -85,11 +83,7 @@ private:
     QNetworkReply* m_PinReply = nullptr;
     QProcess* m_Process;
     Stage m_Stage;
-    QString m_Code;
-    QString m_Proof;
-
     QString m_SessionId;
-    bool m_UseAppPin = false;
 
     QString m_SetupKey;
     QString m_SetupKeyFile;

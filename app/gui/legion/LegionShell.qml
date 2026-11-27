@@ -600,6 +600,12 @@ Item {
             if (name === "connected" || name === "heartbeat") {
                 return
             }
+            if (name === "resync") {
+                // A reconnect may have missed hints. Refresh everything from
+                // the authoritative endpoints instead of replaying events.
+                shell.refreshAll(true)
+                return
+            }
             // SSE is a hint to refresh the authoritative projections. Never
             // mutate local session/queue state from the event payload.
             shell.refreshQueue(true)

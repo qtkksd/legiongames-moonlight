@@ -244,15 +244,6 @@ LegionView {
                                     color: Theme.textMuted
                                     font.pointSize: Theme.fontSmall
                                 }
-
-                                Label {
-                                    visible: home.session && home.session.code
-                                    text: home.session && home.session.code
-                                          ? qsTr("Код подключения: %1").arg(home.session.code)
-                                          : ""
-                                    color: Theme.textDim
-                                    font.pointSize: Theme.fontSmall
-                                }
                             }
                         }
                     }

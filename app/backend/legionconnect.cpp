@@ -6,7 +6,6 @@
 
 #include <QTimer>
 #include <QProcess>
-#include <QStandardPaths>
 #include <QFileInfo>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -27,8 +26,6 @@
 #else
 #define LEGION_API_BASE "https://legiongames.ru"
 #endif
-#define LEGION_CONNECT_URL LEGION_API_BASE "/api/client/connect"
-#define LEGION_PIN_URL LEGION_API_BASE "/api/client/pin"
 #define LEGION_DEFAULT_MANAGEMENT_URL "https://netbird.legiongames.ru"
 
 // Dedicated NetBird profile used for the session so the user's own NetBird
@@ -167,61 +164,10 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
         }
         // The client is now authenticated with the host (pairing done). This is
         // the real "authed into PC" moment and lands ~2s before the Django
-        // /api/client/pin round-trip returns, so complete the bar here rather
+        // PIN relay round-trip returns, so complete the bar here rather
         // than on the slower server response.
         emit progress(100);
         checkFinished();
-    });
-}
-
-void LegionConnect::start(const QString& code, const QString& proof)
-{
-    if (m_Stage != Idle) {
-        emit failed(tr("Подключение уже выполняется"));
-        return;
-    }
-
-    m_Code = code.trimmed();
-    m_Proof = proof.trimmed();
-    m_UseAppPin = false;
-    m_SessionId.clear();
-    if (m_Code.isEmpty()) {
-        emit failed(tr("Введите код"));
-        return;
-    }
-
-    // Reset per-connection NetBird profile state.
-    m_Cleaning = false;
-    m_NetbirdTouched = false;
-    m_PreviousProfileId.clear();
-    m_SessionProfileId.clear();
-    m_StaleProfileIds.clear();
-    m_StaleProfileActive = false;
-    m_RemoveIndex = 0;
-    m_PinReply = nullptr;
-
-    // NOTE: previously-discovered Legion PCs are cleared from the UI model in
-    // PcView.qml (computerModel.removeDiscoveredComputers()) before start().
-
-    m_Stage = ExchangingCode;
-    emit status(tr("Проверка кода..."));
-    emit progress(5);
-
-    QJsonObject body;
-    body[QStringLiteral("code")] = m_Code;
-
-    QNetworkRequest request{QUrl(QStringLiteral(LEGION_CONNECT_URL))};
-    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    request.setRawHeader("User-Agent", "LegionGames-Moonlight");
-    if (!m_Proof.isEmpty()) {
-        // Binds the one-time code to the registered app device, so a leaked
-        // code alone cannot fetch the NetBird setup key or PC address.
-        request.setRawHeader("X-Device-Proof", m_Proof.toLatin1());
-    }
-
-    QNetworkReply* reply = m_Nam->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        downloadSetupKeyFromReply(reply);
     });
 }
 
@@ -232,11 +178,8 @@ void LegionConnect::startWithPayload(const QVariantMap& data)
         return;
     }
 
-    m_Code.clear();
-    m_Proof.clear();
     m_Token.clear();
-    m_UseAppPin = true;
-    m_SessionId = data.value(QStringLiteral("session_id")).toString();
+    m_SessionId = data.value(QStringLiteral("session_id")).toString().trimmed();
     m_Cleaning = false;
     m_NetbirdTouched = false;
     m_PreviousProfileId.clear();
@@ -245,7 +188,7 @@ void LegionConnect::startWithPayload(const QVariantMap& data)
     m_StaleProfileActive = false;
     m_RemoveIndex = 0;
     m_PinReply = nullptr;
-    m_Stage = ExchangingCode;
+    m_Stage = Preparing;
 
     applyConnectPayload(QJsonObject::fromVariantMap(data));
 }
@@ -335,34 +278,18 @@ void LegionConnect::shutdown()
     m_SessionProfileId.clear();
 }
 
-void LegionConnect::downloadSetupKeyFromReply(QNetworkReply* reply)
-{
-    reply->deleteLater();
-
-    if (m_Stage != ExchangingCode) {
-        return;
-    }
-
-    if (reply->error() != QNetworkReply::NoError) {
-        fail(tr("Не удалось проверить код. Проверьте соединение с интернетом."));
-        return;
-    }
-
-    const QByteArray payload = reply->readAll();
-    QJsonParseError parseError;
-    const QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
-    if (doc.isNull() || !doc.isObject()) {
-        fail(tr("Некорректный ответ сервера"));
-        return;
-    }
-
-    applyConnectPayload(doc.object());
-}
-
 void LegionConnect::applyConnectPayload(const QJsonObject& obj)
 {
-    if (obj.value(QStringLiteral("status")).isBool() && !obj.value(QStringLiteral("status")).toBool()) {
-        fail(obj.value(QStringLiteral("error")).toString(tr("Код недействителен или истёк")));
+    if (obj.contains(QStringLiteral("ok")) &&
+            !obj.value(QStringLiteral("ok")).toBool()) {
+        const QString message = obj.value(QStringLiteral("message")).toString();
+        const QString error = obj.value(QStringLiteral("error")).toString();
+        fail(!message.isEmpty() ? message
+                                : (error.isEmpty() ? tr("Сервер отклонил подключение") : error));
+        return;
+    }
+    if (m_SessionId.isEmpty()) {
+        fail(tr("Сервер не вернул идентификатор сессии"));
         return;
     }
 
@@ -634,11 +561,9 @@ void LegionConnect::submitPin()
     QJsonObject body;
     body[QStringLiteral("pin")] = m_Pin;
 
-    const QString pinUrl = (m_UseAppPin && !m_SessionId.isEmpty())
-        ? (QStringLiteral(LEGION_API_BASE "/app/v1/sessions/") + m_SessionId +
-           QStringLiteral("/pin"))
-        : QStringLiteral(LEGION_PIN_URL);
-    QNetworkRequest request{QUrl(pinUrl)};
+    QNetworkRequest request{QUrl(
+        QStringLiteral(LEGION_API_BASE "/app/v1/sessions/") + m_SessionId +
+        QStringLiteral("/pin"))};
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
     request.setRawHeader("Authorization", QByteArrayLiteral("Bearer ") + m_Token.toUtf8());
@@ -671,27 +596,35 @@ void LegionConnect::submitPin()
             QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
         bool ok = false;
+        bool retryable = false;
         QString errorText = tr("ПК отклонил PIN");
+        QString serverCode;
 
-        if (reply->error() != QNetworkReply::NoError || httpStatus != 200) {
-            errorText = tr("Не удалось авторизовать PIN (сеть)");
-            const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-            if (doc.isObject()) {
-                const QString serverError = doc.object().value(QStringLiteral("error")).toString();
-                if (!serverError.isEmpty()) {
-                    errorText = serverError;
+        const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+        if (doc.isObject()) {
+            const QJsonObject envelope = doc.object();
+            serverCode = envelope.value(QStringLiteral("error")).toString();
+            ok = httpStatus == 200 &&
+                 envelope.value(QStringLiteral("ok")).toBool();
+            if (!ok) {
+                const QString serverMessage =
+                    envelope.value(QStringLiteral("message")).toString();
+                if (!serverMessage.isEmpty()) {
+                    errorText = serverMessage;
                 }
+                else if (!serverCode.isEmpty()) {
+                    errorText = serverCode;
+                }
+                // Retry only races: Sunshine publishes the paired client
+                // asynchronously, and the host may briefly be unavailable.
+                retryable =
+                    serverCode == QLatin1String("pin_verification_failed") ||
+                    serverCode == QLatin1String("sunshine_unavailable");
             }
         }
-        else {
-            const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-            if (doc.isObject()) {
-                ok = doc.object().value(QStringLiteral("status")).toBool();
-                const QString serverError = doc.object().value(QStringLiteral("error")).toString();
-                if (!serverError.isEmpty()) {
-                    errorText = serverError;
-                }
-            }
+        else if (reply->error() != QNetworkReply::NoError || httpStatus != 200) {
+            errorText = tr("Не удалось авторизовать PIN (сеть)");
+            retryable = httpStatus == 0 || httpStatus == 429 || httpStatus >= 500;
         }
 
         if (ok) {
@@ -703,7 +636,7 @@ void LegionConnect::submitPin()
 
         // The host may not have registered the pairing session yet (or is still
         // processing) — retry a few times before giving up.
-        if (m_PinAttempts < 6) {
+        if (retryable && m_PinAttempts < 6) {
             qInfo() << "PIN relay attempt" << m_PinAttempts << "failed, retrying:" << errorText;
             QTimer::singleShot(1000, this, &LegionConnect::submitPin);
             return;
@@ -751,7 +684,7 @@ void LegionConnect::fail(const QString& error)
 
     const bool touched = m_NetbirdTouched;
     m_Stage = Idle;
-    if (m_Process->state() != QProcess::NotRunning) {
+    if (m_Process != nullptr && m_Process->state() != QProcess::NotRunning) {
         m_Process->kill();
         m_Process->waitForFinished(1000);
     }

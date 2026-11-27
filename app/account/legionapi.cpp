@@ -1550,26 +1550,6 @@ void LegionApi::reprintRecoveryKit()
     writeRecoveryKit(words);
 }
 
-QString LegionApi::connectProof(const QString &code)
-{
-    if (!ensureDeviceKey(QStringLiteral("connect_proof"), false)) {
-        return QString();
-    }
-
-    QJsonObject body;
-    body.insert(QStringLiteral("code"), code.trimmed());
-    const QByteArray raw = QJsonDocument(body).toJson(QJsonDocument::Compact);
-    QString error;
-    const QByteArray proof = AccountClient::buildProof(
-        m_deviceKey, raw, QStringLiteral("POST"),
-        QStringLiteral("/api/client/connect"), &error);
-    if (proof.isEmpty()) {
-        qWarning() << "connectProof: cannot sign the connect proof:" << error;
-        return QString();
-    }
-    return QString::fromLatin1(proof);
-}
-
 void LegionApi::checkNetbirdStatus()
 {
     if (m_netbirdProcess != nullptr) {

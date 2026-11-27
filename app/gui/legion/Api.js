@@ -13,7 +13,7 @@
 //   logout, confirmWordsSaved, reissueWords, reprintRecoveryKit, recoverComplete,
 //   refreshMe, getClubs, getClub, getWallet, createTopup, pollIntent,
 //   reissueHandoff, startSession, getCurrentSession, stopSession,
-//   reconnectSession, connectSession, connectProof, getQueue, joinQueue,
+//   reconnectSession, connectSession, getQueue, joinQueue,
 //   leaveQueue, claimQueue,
 //   getLegalDocuments, deleteAccount, openExternal, openLogFolder,
 //   retryFailedStep
@@ -218,15 +218,6 @@ function reconnectSession(api, id) {
 
 function connectSession(api, id) {
     return call1(api, "connectSession", id)
-}
-
-// Proof for POST /api/client/connect. The server requires it when the
-// connection belongs to a registered app device.
-function connectProof(api, code) {
-    if (!has(api, "connectProof")) {
-        return ""
-    }
-    return String(api.connectProof(code) || "")
 }
 
 // ---- queue --------------------------------------------------------------

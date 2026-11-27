@@ -2,8 +2,8 @@
 
 #include <QtGlobal>
 
-// End-of-booking notice state, handed over by LegionConnect at one-time-code
-// time (/api/client/connect -> session_deadline) and consumed by the streaming
+// End-of-booking notice state, handed over by LegionConnect with the
+// authenticated session connect material (session_deadline) and consumed by the streaming
 // Session to show in-stream overlay warnings.
 //
 // The client runs a purely local countdown off these values — there is no

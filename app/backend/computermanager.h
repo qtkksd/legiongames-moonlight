@@ -231,7 +231,6 @@ public:
     Q_INVOKABLE void addNewHostManually(QString address);
 
     // LegionGames one-time-code connect flow
-    Q_INVOKABLE void startLegionConnect(QString code, QString proof = QString());
     Q_INVOKABLE void startLegionConnectWithData(const QVariantMap &data);
     Q_INVOKABLE void stopLegionConnect();
 

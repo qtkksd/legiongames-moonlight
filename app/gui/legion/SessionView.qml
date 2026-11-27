@@ -10,7 +10,7 @@ import ".."
 
 // Session control: creating, provisioning, connecting, active, disconnected,
 // expired. The stream itself is the existing StreamSegue/AppView flow; this
-// page only drives the connect code and the server state.
+// page only drives the authenticated connect material and the server state.
 LegionView {
     id: sessionView
 
@@ -130,6 +130,7 @@ LegionView {
                 ComputerManager.stopLegionConnect()
                 sessionView.summaryVisible = true
                 if (sessionView.shell) {
+                    sessionView.shell.refreshSession(true)
                     sessionView.shell.refreshWallet(true)
                 }
             }
@@ -153,7 +154,17 @@ LegionView {
             else if (op === "session_connect") {
                 sessionView.connecting = false
                 sessionView.connectStage = ""
-                sessionView.showError(code, message, op)
+                if (code === "connect_material_consumed" && sessionView.session) {
+                    // The one-shot material was lost or reused. The server will
+                    // not issue a second key, so tear the lease down and make
+                    // the user start a fresh session.
+                    sessionView.connectError =
+                        qsTr("Данные подключения уже выданы. Сессия остановлена — начните заново.")
+                    Api.stopSession(api, sessionView.session.id)
+                }
+                else {
+                    sessionView.showError(code, message, op)
+                }
             }
             else if (op === "session_reconnect" || op === "session_current") {
                 sessionView.showError(code, message, op)

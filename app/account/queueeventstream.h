@@ -9,9 +9,10 @@ class QNetworkAccessManager;
 class QNetworkReply;
 class QTimer;
 
-// Small SSE client for the queue notification stream. The existing queue SSE
-// service authenticates a cookie token, so the app presents its short-lived
-// access token as __Host-lgsession for this connection only.
+// Small SSE client for the queue notification stream. The app authenticates
+// with its short-lived access token in the Authorization header; tokens never
+// appear in URLs or cookies. Events are advisory: the shell refreshes the
+// authoritative queue/session/wallet state after each hint.
 class QueueEventStream : public QObject
 {
     Q_OBJECT
@@ -38,6 +39,7 @@ private:
     QTimer *m_reconnectTimer;
     QByteArray m_token;
     QByteArray m_buffer;
+    QByteArray m_lastEventId;
     int m_backoffMs = 1000;
     bool m_stopping = false;
 };

@@ -81,9 +81,6 @@ public:
     Q_INVOKABLE void reprintRecoveryKit();
     Q_INVOKABLE void resetLocalAccount();
     Q_INVOKABLE void checkNetbirdStatus();
-    // One-time proof for POST /api/client/connect. The body must match the
-    // JSON the backend sends exactly; LegionConnect reuses this string.
-    Q_INVOKABLE QString connectProof(const QString &code);
     Q_INVOKABLE void deleteAccount(const QString &handle, const QStringList &words);
 
     Q_INVOKABLE void getLegalDocuments();
