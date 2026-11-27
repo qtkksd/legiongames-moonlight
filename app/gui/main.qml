@@ -89,8 +89,14 @@ ApplicationWindow {
         // The initial StackView push happens before the header exists, so the
         // chrome state is applied once here.
         uiReady = true
-        toolBar.visible = !legionShellShown()
+        updateChrome()
         tryDismissSplash()
+    }
+
+    onSplashVisibleChanged: {
+        if (!splashVisible) {
+            updateChrome()
+        }
     }
 
     Connections {
@@ -199,6 +205,20 @@ ApplicationWindow {
                stackView.currentItem.objectName === "legion-shell"
     }
 
+    // Keep the legacy header in layout while the splash is visible. Opacity
+    // hides it visually; changing visibility/height here would move the
+    // centered splash content and caused the startup freeze in earlier fixes.
+    function updateChrome() {
+        if (!uiReady || !toolBar) {
+            return
+        }
+        if (splashVisible) {
+            toolBar.visible = true
+            return
+        }
+        toolBar.visible = !legionShellShown()
+    }
+
     StackView {
         id: stackView
         anchors.fill: parent
@@ -226,7 +246,7 @@ ApplicationWindow {
             // it provides its own rail and header. StreamSegue toggles the
             // same toolbar directly, so this is reassigned on every change.
             if (uiReady) {
-                toolBar.visible = !legionShellShown()
+                updateChrome()
             }
             tryDismissSplash()
         }
