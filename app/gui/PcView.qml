@@ -35,31 +35,9 @@ CenteredGridView {
         z: -1
         opacity: 0.08
 
-        Image {
+        LogoWheel {
             id: backgroundWheel
             anchors.fill: parent
-            source: "qrc:/res/logo_wheel.svg"
-            fillMode: Image.PreserveAspectFit
-            smooth: true
-
-            // Matches the website keyframes exactly: hold ~10s, then snap 60°
-            // with the CSS default `ease` timing (cubic-bezier(0.25, 0.1, 0.25, 1)),
-            // six times (one full turn every 72s).
-            SequentialAnimation on rotation {
-                loops: Animation.Infinite
-                PauseAnimation { duration: 10000 }
-                NumberAnimation { from: 0;   to: 60;  duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
-                PauseAnimation { duration: 10000 }
-                NumberAnimation { from: 60;  to: 120; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
-                PauseAnimation { duration: 10000 }
-                NumberAnimation { from: 120; to: 180; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
-                PauseAnimation { duration: 10000 }
-                NumberAnimation { from: 180; to: 240; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
-                PauseAnimation { duration: 10000 }
-                NumberAnimation { from: 240; to: 300; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
-                PauseAnimation { duration: 10000 }
-                NumberAnimation { from: 300; to: 360; duration: 2000; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1.0, 1.0, 1.0] }
-            }
         }
 
         Image {

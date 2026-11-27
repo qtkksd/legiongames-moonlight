@@ -341,12 +341,10 @@ ApplicationWindow {
                 height: 190
                 anchors.horizontalCenter: parent.horizontalCenter
 
-                Image {
+                LogoWheel {
                     id: splashWheel
                     anchors.fill: parent
-                    source: "qrc:/res/logo_wheel.svg"
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
+                    initialHoldMs: 0
                 }
 
                 Image {
@@ -356,14 +354,6 @@ ApplicationWindow {
                     smooth: true
                 }
 
-                RotationAnimator {
-                    target: splashWheel
-                    from: 0
-                    to: 360
-                    duration: 6000
-                    loops: Animation.Infinite
-                    running: splash.visible
-                }
             }
 
             Label {
