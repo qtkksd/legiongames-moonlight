@@ -88,6 +88,9 @@ private:
     QString m_Code;
     QString m_Proof;
 
+    QString m_SessionId;
+    bool m_UseAppPin = false;
+
     QString m_SetupKey;
     QString m_SetupKeyFile;
     QString m_ManagementUrl;

@@ -183,6 +183,8 @@ void LegionConnect::start(const QString& code, const QString& proof)
 
     m_Code = code.trimmed();
     m_Proof = proof.trimmed();
+    m_UseAppPin = false;
+    m_SessionId.clear();
     if (m_Code.isEmpty()) {
         emit failed(tr("Введите код"));
         return;
@@ -232,6 +234,9 @@ void LegionConnect::startWithPayload(const QVariantMap& data)
 
     m_Code.clear();
     m_Proof.clear();
+    m_Token.clear();
+    m_UseAppPin = true;
+    m_SessionId = data.value(QStringLiteral("session_id")).toString();
     m_Cleaning = false;
     m_NetbirdTouched = false;
     m_PreviousProfileId.clear();
@@ -629,7 +634,11 @@ void LegionConnect::submitPin()
     QJsonObject body;
     body[QStringLiteral("pin")] = m_Pin;
 
-    QNetworkRequest request{QUrl(QStringLiteral(LEGION_PIN_URL))};
+    const QString pinUrl = (m_UseAppPin && !m_SessionId.isEmpty())
+        ? (QStringLiteral(LEGION_API_BASE "/app/v1/sessions/") + m_SessionId +
+           QStringLiteral("/pin"))
+        : QStringLiteral(LEGION_PIN_URL);
+    QNetworkRequest request{QUrl(pinUrl)};
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setRawHeader("User-Agent", "LegionGames-Moonlight");
     request.setRawHeader("Authorization", QByteArrayLiteral("Bearer ") + m_Token.toUtf8());
