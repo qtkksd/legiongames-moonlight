@@ -41,6 +41,11 @@ Item {
         }
     }
 
+    // True once the account bootstrap has reached a terminal or onboarding
+    // state. The splash waits for this instead of flashing the checking gate.
+    readonly property bool startupSettled: appState.length > 0 &&
+                                           appState !== "checking"
+
     // app | onboarding | startup
     readonly property string mode: {
         if (!Api.available(api)) {

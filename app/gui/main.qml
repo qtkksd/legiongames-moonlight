@@ -123,8 +123,10 @@ ApplicationWindow {
         if (!splashMinimumElapsed && !splashTimedOut) {
             return
         }
-        if (!splashTimedOut && (!uiReady || stackView.currentItem === null ||
-                                stackView.currentItem.objectName !== "legion-shell")) {
+        var shell = stackView.currentItem
+        if (!splashTimedOut && (!uiReady || shell === null ||
+                                shell.objectName !== "legion-shell" ||
+                                !shell.startupSettled)) {
             return
         }
         splashFadeOut.start()
