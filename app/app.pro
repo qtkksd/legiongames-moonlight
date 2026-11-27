@@ -493,6 +493,12 @@ RESOURCES += \
     resources.qrc \
     qml.qrc
 
+# QA panel is staging-only. The production build has no QA resource and no
+# route to it, so the page cannot be reached or loaded there.
+contains(DEFINES, LG_STAGING_BUILD) {
+    RESOURCES += qa.qrc
+}
+
 TRANSLATIONS += \
     languages/qml_zh_CN.ts \
     languages/qml_de.ts \

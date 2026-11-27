@@ -33,6 +33,14 @@ Item {
     readonly property string lastErrorCode: api ? (api.lastErrorCode || "") : ""
     readonly property string catalogUpdatedAt: api ? (api.catalogUpdatedAt || "") : ""
     readonly property var notifications: notificationCenter
+    readonly property bool qaEnabled: {
+        try {
+            return lgStagingBuild === true
+        }
+        catch (error) {
+            return false
+        }
+    }
     property string lastQueueStatus: ""
 
     readonly property bool windowVisible: {
@@ -181,6 +189,9 @@ Item {
         }
         else if (key === "settings") {
             setPage("qrc:/gui/legion/LegionSettingsView.qml", {})
+        }
+        else if (key === "qa" && qaEnabled) {
+            setPage("qrc:/gui/legion/QaView.qml", {})
         }
         else {
             section = "home"
@@ -743,6 +754,7 @@ Item {
             current: shell.section
             handle: shell.handle
             sessionActive: shell.session !== null && shell.session.status === "active"
+            qaEnabled: shell.qaEnabled
             queueReady: shell.queueEntry !== null && shell.queueEntry.status === "notified"
             queuePosition: (shell.queueEntry !== null && shell.queueEntry.status === "waiting")
                            ? Number(shell.queueEntry.position || 0) : 0

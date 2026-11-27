@@ -126,6 +126,15 @@ Item {
         }
     }
 
+    function clear() {
+        bannerTimer.stop()
+        center.bannerQueue = []
+        center.popupQueue = []
+        center.banner = null
+        center.popup = null
+        popupView.close()
+    }
+
     Timer {
         id: bannerTimer
         repeat: false

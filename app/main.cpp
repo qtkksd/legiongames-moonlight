@@ -1107,6 +1107,11 @@ int main(int argc, char *argv[])
             legionApi.notifyPaymentReturn(launchPaymentId);
         }
 
+#ifdef LG_STAGING_BUILD
+        engine.rootContext()->setContextProperty("lgStagingBuild", true);
+#else
+        engine.rootContext()->setContextProperty("lgStagingBuild", false);
+#endif
         engine.rootContext()->setContextProperty("initialView", initialView);
         engine.rootContext()->setContextProperty("runConfigChecks", commandLineParserResult == GlobalCommandLineParser::NormalStartRequested);
         auto streamLauncher = new StreamLauncher(&app);
