@@ -10,12 +10,22 @@ import StreamingPreferences 1.0
 import SystemProperties 1.0
 import SdlGamepadKeyNavigation 1.0
 
+import "legion/Theme.js" as Theme
+
 ApplicationWindow {
     property bool pollingActive: false
 
     // True once the whole window tree exists; used to avoid touching the
     // toolbar from the StackView's early completion callback.
     property bool uiReady: false
+
+    // Splash/loading overlay. The timer totals 1 s including the 180 ms
+    // fade-out; a 5 s failsafe prevents a broken shell from freezing startup.
+    property bool splashMinimumElapsed: false
+    property bool splashTimedOut: false
+    property bool splashDismissed: false
+    readonly property bool splashEnabled: initialView === "qrc:/gui/PcView.qml"
+    readonly property bool splashVisible: splashEnabled && !splashDismissed
 
     // Set by SettingsView to force the back operation to pop all
     // pages except the initial view. This is required when doing
@@ -79,6 +89,7 @@ ApplicationWindow {
         // chrome state is applied once here.
         uiReady = true
         toolBar.visible = !legionShellShown()
+        tryDismissSplash()
     }
 
     Connections {
@@ -103,6 +114,20 @@ ApplicationWindow {
                 stackView.push(segue)
             }
         }
+    }
+
+    function tryDismissSplash() {
+        if (!splashEnabled || splashDismissed || splashFadeOut.running) {
+            return
+        }
+        if (!splashMinimumElapsed && !splashTimedOut) {
+            return
+        }
+        if (!splashTimedOut && (!uiReady || stackView.currentItem === null ||
+                                stackView.currentItem.objectName !== "legion-shell")) {
+            return
+        }
+        splashFadeOut.start()
     }
 
     function hasHardwareAccelerationChanged() {
@@ -197,6 +222,7 @@ ApplicationWindow {
             if (uiReady) {
                 toolBar.visible = !legionShellShown()
             }
+            tryDismissSplash()
         }
 
         Keys.onEscapePressed: {
@@ -255,6 +281,123 @@ ApplicationWindow {
                 color: "#aaaaaa"
                 font.pointSize: 14
             }
+        }
+    }
+
+    // ---- splash ---------------------------------------------------------
+    //
+    // The wheel and alien are the same split production artwork used by the
+    // legacy PC view. QtSvg does not execute the CSS keyframes in the original
+    // logo.svg, so the wheel is rotated here in QML. Minimum splash time is
+    // 1 s total: 820 ms hold + 180 ms fade-out; if the shell is slower, the
+    // fade waits for it (5 s failsafe).
+    Rectangle {
+        id: splash
+        anchors.fill: parent
+        z: 1000
+        color: Theme.bg
+        visible: window.splashEnabled && !window.splashDismissed
+        opacity: 0
+
+        Component.onCompleted: {
+            if (window.splashEnabled) {
+                splashFadeIn.start()
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+        }
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 18
+
+            Item {
+                width: 190
+                height: 190
+                anchors.horizontalCenter: parent.horizontalCenter
+
+                Image {
+                    id: splashWheel
+                    anchors.fill: parent
+                    source: "qrc:/res/logo_wheel.svg"
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                }
+
+                Image {
+                    anchors.fill: parent
+                    source: "qrc:/res/logo_alien.svg"
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                }
+
+                RotationAnimator {
+                    target: splashWheel
+                    from: 0
+                    to: 360
+                    duration: 6000
+                    loops: Animation.Infinite
+                    running: splash.visible
+                }
+            }
+
+            Label {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("ЛЕГИОН ИГР")
+                color: Theme.accent
+                font.pointSize: Theme.fontPageTitle
+                font.bold: true
+            }
+
+            Label {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("Загрузка…")
+                color: Theme.textMuted
+                font.pointSize: Theme.fontBody
+            }
+        }
+    }
+
+    NumberAnimation {
+        id: splashFadeIn
+        target: splash
+        property: "opacity"
+        from: 0
+        to: 1
+        duration: 180
+        easing.type: Easing.OutCubic
+    }
+
+    NumberAnimation {
+        id: splashFadeOut
+        target: splash
+        property: "opacity"
+        to: 0
+        duration: 180
+        easing.type: Easing.InCubic
+        onStopped: window.splashDismissed = true
+    }
+
+    Timer {
+        id: splashMinimumTimer
+        interval: 820
+        running: window.splashEnabled
+        onTriggered: {
+            window.splashMinimumElapsed = true
+            window.tryDismissSplash()
+        }
+    }
+
+    Timer {
+        id: splashFailsafeTimer
+        interval: 5000
+        running: window.splashEnabled
+        onTriggered: {
+            window.splashTimedOut = true
+            window.tryDismissSplash()
         }
     }
 
