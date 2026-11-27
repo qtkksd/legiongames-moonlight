@@ -118,6 +118,12 @@ Item {
     property double walletFetchedAt: 0
     property double sessionFetchedAt: 0
     property double queueFetchedAt: 0
+    property var sessionHistory: []
+    property double sessionHistoryFetchedAt: 0
+    property bool sessionHistoryLoading: false
+    property bool sessionHistoryInFlight: false
+    property string sessionHistoryError: ""
+    readonly property int sessionHistoryCacheTtlMs: 30000
     property bool catalogInFlight: false
     property bool walletInFlight: false
     property bool sessionInFlight: false
@@ -376,6 +382,26 @@ Item {
         queueInFlight = true
         if (!Api.getQueue(api)) {
             queueInFlight = false
+            return false
+        }
+        return true
+    }
+
+    function refreshSessionHistory(force) {
+        if (sessionHistoryInFlight) {
+            return false
+        }
+        if (!force && sessionHistoryFetchedAt > 0 &&
+                (Date.now() - sessionHistoryFetchedAt) < sessionHistoryCacheTtlMs) {
+            return false
+        }
+        sessionHistoryInFlight = true
+        sessionHistoryLoading = true
+        sessionHistoryError = ""
+        if (!Api.getSessionHistory(api)) {
+            sessionHistoryInFlight = false
+            sessionHistoryLoading = false
+            sessionHistoryError = "offline"
             return false
         }
         return true
@@ -640,6 +666,13 @@ Item {
                 shell.loadCatalog(false, true)
                 shell.refreshWallet(true)
             }
+            else if (op === "session_history") {
+                shell.sessionHistory = (data && data.sessions) ? data.sessions : []
+                shell.sessionHistoryInFlight = false
+                shell.sessionHistoryLoading = false
+                shell.sessionHistoryFetchedAt = Date.now()
+                shell.sessionHistoryError = ""
+            }
         }
 
         function onFailed(op, code, message) {
@@ -665,6 +698,11 @@ Item {
             else if (op === "queue") {
                 shell.queueInFlight = false
                 shell.queueDirty = false
+            }
+            else if (op === "session_history") {
+                shell.sessionHistoryInFlight = false
+                shell.sessionHistoryLoading = false
+                shell.sessionHistoryError = code ? String(code) : "server_error"
             }
             if (op === "session_current" && code === "not_found") {
                 // No active session is a normal answer, not an error.

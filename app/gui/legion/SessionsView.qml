@@ -3,6 +3,7 @@ import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 
 import "Api.js" as Api
+import "Notice.js" as Notice
 import "Theme.js" as Theme
 import ".."
 
@@ -17,12 +18,10 @@ LegionView {
                                            session.status !== "expired" &&
                                            session.status !== "stopped"
 
-    property var history: []
-    property bool historyLoading: false
-    property string historyError: ""
-    property bool historyInFlight: false
-    property double historyFetchedAt: 0
-    readonly property int historyCacheTtlMs: 30000
+    readonly property var history: shell ? shell.sessionHistory : []
+    readonly property bool historyLoading: shell ? shell.sessionHistoryLoading : false
+    readonly property string historyError: shell ? shell.sessionHistoryError : ""
+    readonly property bool historyDjangoDown: Notice.isDjangoDown(historyError)
 
     function activate() {
         if (shell) {
@@ -33,20 +32,8 @@ LegionView {
     }
 
     function loadHistory(force) {
-        if (historyInFlight) {
-            return
-        }
-        if (!force && historyFetchedAt > 0 &&
-                (Date.now() - historyFetchedAt) < historyCacheTtlMs) {
-            return
-        }
-        historyInFlight = true
-        historyLoading = true
-        historyError = ""
-        if (!Api.getSessionHistory(api)) {
-            historyInFlight = false
-            historyLoading = false
-            historyError = "offline"
+        if (shell) {
+            shell.refreshSessionHistory(force === true)
         }
     }
 
@@ -59,30 +46,6 @@ LegionView {
         }
         else {
             chooseClubButton.forceActiveFocus()
-        }
-    }
-
-    Connections {
-        target: sessions.api
-        ignoreUnknownSignals: true
-
-        function onResponse(op, data) {
-            if (op === "session_history") {
-                sessions.history = (data && data.sessions) ? data.sessions : []
-                sessions.historyInFlight = false
-                sessions.historyFetchedAt = Date.now()
-                sessions.historyLoading = false
-                sessions.historyError = ""
-            }
-        }
-
-        function onFailed(op, code, message) {
-            if (op === "session_history") {
-                sessions.historyInFlight = false
-                sessions.historyLoading = false
-                sessions.historyError = code ? String(code) : "server_error"
-                sessions.showError(code, message, op)
-            }
         }
     }
 
@@ -297,8 +260,7 @@ LegionView {
                     ErrorBanner {
                         Layout.fillWidth: true
                         visible: sessions.historyError.length > 0 &&
-                                 sessions.hasInlineError
-                        tone: sessions.errorTone
+                                 !sessions.historyDjangoDown
                         text: Api.errorText(sessions.historyError, sessions.serverError)
                         detail: sessions.serverError
                         canRetry: true
