@@ -58,7 +58,15 @@ Dialog {
         y = Math.round((parent.height - height) / 2)
     }
 
-    onOpened: centerInParent()
+    onOpened: {
+        centerInParent()
+        if (actionButton.visible) {
+            actionButton.forceActiveFocus(Qt.TabFocus)
+        }
+        else {
+            closeButton.forceActiveFocus(Qt.TabFocus)
+        }
+    }
     onWidthChanged: if (visible) centerInParent()
     onHeightChanged: if (visible) centerInParent()
 
@@ -132,12 +140,14 @@ Dialog {
             Item { Layout.fillWidth: true }
 
             LegionButton {
+                id: closeButton
                 kind: "secondary"
                 text: qsTr("Закрыть")
                 onClicked: dialog.close()
             }
 
             LegionButton {
+                id: actionButton
                 visible: !!(dialog.notice && dialog.notice.actionText)
                 kind: "primary"
                 text: dialog.notice && dialog.notice.actionText
@@ -150,15 +160,6 @@ Dialog {
                     }
                 }
             }
-        }
-    }
-
-    onOpened: {
-        if (actionButton.visible) {
-            actionButton.forceActiveFocus(Qt.TabFocus)
-        }
-        else {
-            closeButton.forceActiveFocus(Qt.TabFocus)
         }
     }
 

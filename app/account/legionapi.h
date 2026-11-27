@@ -13,6 +13,7 @@
 
 class AccountClient;
 class DeviceKey;
+class QueueEventStream;
 class QProcess;
 class QTimer;
 class Vault;
