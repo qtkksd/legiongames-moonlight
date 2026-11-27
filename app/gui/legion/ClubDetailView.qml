@@ -34,6 +34,9 @@ LegionView {
         return qsTr("Клуб")
     }
 
+    readonly property var specRows: club ? Api.specRows(club.specs) : []
+    readonly property string specSummary: club ? Api.specSummary(club.specs, 3) : ""
+
     readonly property string updatedAt: {
         if (detailUpdatedAt.length > 0) {
             return detailUpdatedAt
@@ -282,10 +285,14 @@ LegionView {
 
                         Label {
                             Layout.fillWidth: true
-                            text: detail.club && detail.club.specs ? detail.club.specs : ""
+                            visible: detail.specSummary.length > 0
+                            text: detail.specSummary
                             color: Theme.textMuted
                             font.pointSize: Theme.fontBody
+                            maximumLineCount: 1
+                            wrapMode: Text.NoWrap
                             elide: Text.ElideRight
+                            textFormat: Text.PlainText
                         }
                     }
 
@@ -368,6 +375,46 @@ LegionView {
                             color: Theme.text
                             font.pointSize: Theme.fontBody
                             wrapMode: Text.Wrap
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            visible: detail.specRows.length > 0
+                            spacing: Theme.spaceXs
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("Характеристики")
+                                color: Theme.textMuted
+                                font.pointSize: Theme.fontSmall
+                                font.bold: true
+                            }
+
+                            Repeater {
+                                model: detail.specRows
+
+                                delegate: RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.spaceM
+
+                                    Label {
+                                        visible: modelData.label.length > 0
+                                        text: modelData.label
+                                        color: Theme.textDim
+                                        font.pointSize: Theme.fontBody
+                                        Layout.preferredWidth: 64
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: modelData.value
+                                        color: Theme.text
+                                        font.pointSize: Theme.fontBody
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                            }
                         }
 
                         Label {

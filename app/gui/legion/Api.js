@@ -406,6 +406,100 @@ function sortClubs(clubs) {
     return copy
 }
 
+// Club specs are a free-text field in Django and may contain CRLF, LF or a
+// single line. Split them once so a QML Label never receives raw newlines in a
+// fixed-height card.
+function specLines(specs) {
+    if (!specs) {
+        return []
+    }
+    var text = String(specs).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+    var raw = text.split("\n")
+    var lines = []
+    for (var i = 0; i < raw.length; i++) {
+        var line = String(raw[i]).trim()
+        if (line.length > 0) {
+            lines.push(line)
+        }
+    }
+    return lines
+}
+
+function specField(line) {
+    var text = String(line || "")
+    var colon = text.indexOf(":")
+    if (colon <= 0) {
+        return ""
+    }
+    return text.substring(0, colon).trim().toUpperCase()
+}
+
+function specValueOf(line) {
+    var text = String(line || "")
+    var colon = text.indexOf(":")
+    if (colon <= 0) {
+        return text.trim()
+    }
+    return text.substring(colon + 1).trim()
+}
+
+function specMatches(line, key) {
+    var field = specField(line)
+    return field === key || field.indexOf(key) === 0
+}
+
+// The compact list row keeps the three decision-driving lines. Storage and
+// any extra lines stay on the detail page.
+function specSummary(specs, maxItems) {
+    var lines = specLines(specs)
+    if (lines.length === 0) {
+        return ""
+    }
+    var limit = maxItems === undefined ? 3 : Number(maxItems)
+    if (limit <= 0) {
+        return ""
+    }
+    var preferred = ["CPU", "GPU", "RAM"]
+    var used = []
+    var picked = []
+    for (var p = 0; p < preferred.length && picked.length < limit; p++) {
+        for (var i = 0; i < lines.length; i++) {
+            if (used[i]) {
+                continue
+            }
+            if (specMatches(lines[i], preferred[p])) {
+                picked.push(lines[i])
+                used[i] = true
+                break
+            }
+        }
+    }
+    for (var j = 0; j < lines.length && picked.length < limit; j++) {
+        if (!used[j]) {
+            picked.push(lines[j])
+            used[j] = true
+        }
+    }
+    return picked.join(" · ")
+}
+
+function specRows(specs) {
+    var lines = specLines(specs)
+    var rows = []
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i]
+        var label = specField(line)
+        var value = specValueOf(line)
+        if (label.length > 0 && value.length > 0) {
+            rows.push({ label: label, value: value })
+        }
+        else {
+            rows.push({ label: "", value: line })
+        }
+    }
+    return rows
+}
+
 // "Свободно 3 из 5" / "Занято" / "Обслуживание" / "Закрыто"
 function clubAvailabilityText(club) {
     if (!club) {

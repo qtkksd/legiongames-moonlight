@@ -36,9 +36,11 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: Theme.spaceL
         spacing: Theme.spaceXl
+        clip: true
 
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             Layout.fillHeight: true
             spacing: Theme.spaceXs
 
@@ -69,10 +71,14 @@ Rectangle {
 
             Label {
                 Layout.fillWidth: true
-                text: card.club.specs ? card.club.specs : ""
+                visible: text.length > 0
+                text: Api.specSummary(card.club.specs, 3)
                 color: Theme.textMuted
                 font.pointSize: Theme.fontBody
+                maximumLineCount: 1
+                wrapMode: Text.NoWrap
                 elide: Text.ElideRight
+                textFormat: Text.PlainText
             }
 
             Label {
@@ -97,6 +103,9 @@ Rectangle {
         }
 
         ColumnLayout {
+            Layout.alignment: Qt.AlignVCenter
+            Layout.preferredWidth: 170
+            Layout.maximumWidth: 220
             spacing: Theme.spaceXs
 
             Label {
@@ -106,6 +115,9 @@ Rectangle {
                 font.bold: true
                 horizontalAlignment: Text.AlignRight
                 Layout.alignment: Qt.AlignRight
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                maximumLineCount: 1
             }
 
             Label {
@@ -114,6 +126,9 @@ Rectangle {
                 font.pointSize: Theme.fontSmall
                 horizontalAlignment: Text.AlignRight
                 Layout.alignment: Qt.AlignRight
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                maximumLineCount: 1
             }
 
             Label {
@@ -124,6 +139,9 @@ Rectangle {
                 font.pointSize: Theme.fontSmall
                 horizontalAlignment: Text.AlignRight
                 Layout.alignment: Qt.AlignRight
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                maximumLineCount: 1
             }
 
             Label {
@@ -133,6 +151,9 @@ Rectangle {
                 font.pointSize: Theme.fontSmall
                 horizontalAlignment: Text.AlignRight
                 Layout.alignment: Qt.AlignRight
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                maximumLineCount: 1
             }
         }
 
