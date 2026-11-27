@@ -20,8 +20,13 @@ Rectangle {
     height: implicitHeight
     radius: Theme.radiusM
     color: running ? "#1f1414" : Theme.panel
+    property color borderColor: (running || hovered) ? Theme.accent : Theme.line
     border.width: running ? 2 : 1
-    border.color: (running || hovered) ? Theme.accent : Theme.line
+    border.color: borderColor
+
+    Behavior on borderColor {
+        ColorAnimation { duration: 180; easing.type: Easing.OutCubic }
+    }
 
     MouseArea {
         anchors.fill: parent

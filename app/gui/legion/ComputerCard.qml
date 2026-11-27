@@ -31,8 +31,13 @@ Rectangle {
     height: implicitHeight
     radius: Theme.radiusM
     color: currentSession ? "#1f1414" : Theme.panel
+    property color borderColor: (currentSession || hovered) ? Theme.accent : Theme.line
     border.width: currentSession ? 2 : 1
-    border.color: (currentSession || hovered) ? Theme.accent : Theme.line
+    border.color: borderColor
+
+    Behavior on borderColor {
+        ColorAnimation { duration: 180; easing.type: Easing.OutCubic }
+    }
 
     MouseArea {
         anchors.fill: parent

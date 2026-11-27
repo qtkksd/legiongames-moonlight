@@ -17,14 +17,20 @@ Rectangle {
     property bool stale: false
     property bool hasFunds: true
     property bool current: false
+    property bool hovered: false
 
     signal activated()
 
     implicitHeight: 124
     radius: Theme.radiusM
     color: current ? "#1f1414" : Theme.panel
+    property color borderColor: (current || hovered) ? Theme.accent : Theme.line
     border.width: current ? 2 : 1
-    border.color: current ? Theme.accent : Theme.line
+    border.color: borderColor
+
+    Behavior on borderColor {
+        ColorAnimation { duration: 180; easing.type: Easing.OutCubic }
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -142,6 +148,8 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
+        onEntered: card.hovered = true
+        onExited: card.hovered = false
         onClicked: card.activated()
     }
 }
