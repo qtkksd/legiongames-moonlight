@@ -37,6 +37,7 @@ ApplicationWindow {
     height: 720
     minimumWidth: 1024
     minimumHeight: 600
+    color: Theme.bg
 
     // LegionGames theme (mirrors templates/home.html palette)
     font.family: "Manrope"
@@ -202,6 +203,9 @@ ApplicationWindow {
         id: stackView
         anchors.fill: parent
         focus: true
+        // The splash is an opaque launch screen. Do not render the
+        // startup/checking page underneath it for the first frame.
+        visible: !window.splashVisible
 
         Component.onCompleted: {
             // Perform our early initialization before constructing
@@ -299,13 +303,9 @@ ApplicationWindow {
         z: 1000
         color: Theme.bg
         visible: window.splashEnabled && !window.splashDismissed
-        opacity: 0
-
-        Component.onCompleted: {
-            if (window.splashEnabled) {
-                splashFadeIn.start()
-            }
-        }
+        // Start fully opaque: a fade-in would expose the app's checking gate
+        // for one or more frames before the launch screen covers it.
+        opacity: 1
 
         MouseArea {
             anchors.fill: parent
@@ -361,16 +361,6 @@ ApplicationWindow {
                 font.pointSize: Theme.fontBody
             }
         }
-    }
-
-    NumberAnimation {
-        id: splashFadeIn
-        target: splash
-        property: "opacity"
-        from: 0
-        to: 1
-        duration: 180
-        easing.type: Easing.OutCubic
     }
 
     NumberAnimation {
