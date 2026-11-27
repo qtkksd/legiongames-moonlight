@@ -450,6 +450,7 @@ LegionView {
                         Layout.preferredHeight: 120
 
                         TextArea {
+                            id: diagnosticsText
                             width: parent.width
                             readOnly: true
                             selectByMouse: true
@@ -464,13 +465,24 @@ LegionView {
                                   "account: " + (settings.handle.length > 0 ? settings.handle : "none") + "\n" +
                                   "state: " + (settings.appState.length > 0 ? settings.appState : "unknown") + "\n" +
                                   "vault: " + (settings.vaultPath.length > 0 ? settings.vaultPath : "unavailable") + "\n" +
-                                  "last_error: " + (settings.serverErrorCode.length > 0 ? settings.serverErrorCode : "none")
+                                  "netbird: " + settings.netbirdStatus + "\n" +
+                                  "last_error: " + (settings.serverErrorCode.length > 0 ? settings.serverErrorCode : "none") + "\n" +
+                                  "last_error_message: " + (settings.serverError.length > 0 ? settings.serverError : "none")
                         }
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.spaceM
+
+                        LegionButton {
+                            kind: "secondary"
+                            text: qsTr("Скопировать диагностику")
+                            onClicked: {
+                                diagnosticsText.selectAll()
+                                diagnosticsText.copy()
+                            }
+                        }
 
                         LegionButton {
                             kind: "secondary"
