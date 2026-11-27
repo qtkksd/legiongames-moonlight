@@ -528,6 +528,16 @@ private slots:
         QVERIFY(parsed.disabled);
     }
 
+    void request_policy_only_retries_reads()
+    {
+        QVERIFY(AccountClient::isRetryableRequest(QByteArrayLiteral("GET"), true, 0));
+        QVERIFY(AccountClient::isRetryableRequest(QByteArrayLiteral("GET"), false, 429));
+        QVERIFY(AccountClient::isRetryableRequest(QByteArrayLiteral("GET"), false, 503));
+        QVERIFY(!AccountClient::isRetryableRequest(QByteArrayLiteral("POST"), true, 0));
+        QVERIFY(!AccountClient::isRetryableRequest(QByteArrayLiteral("POST"), false, 500));
+        QVERIFY(!AccountClient::isRetryableRequest(QByteArrayLiteral("GET"), false, 400));
+    }
+
     void manifest_placeholder_fails_closed()
     {
         QByteArray key;

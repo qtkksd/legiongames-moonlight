@@ -138,6 +138,15 @@ QString AccountClient::apiBaseUrl()
 #endif
 }
 
+bool AccountClient::isRetryableRequest(const QByteArray &method, bool networkError,
+                                       int httpStatus)
+{
+    // Reads may be retried automatically. Mutations must use the same
+    // client request id and are never marked retryable here.
+    return method == QByteArrayLiteral("GET") &&
+            (networkError || httpStatus == 429 || httpStatus >= 500);
+}
+
 QString AccountClient::clientVersion()
 {
     QString version = QString::fromLatin1(VERSION_STR);
@@ -612,8 +621,8 @@ void AccountClient::handleReply(QNetworkReply *reply, const Pending &pending)
     // Reads are safe to retry on transport/5xx/429 failures. Mutations are
     // deliberately never marked retryable here; their caller must reuse the
     // same client request id.
-    result.retryable = pending.method == QLatin1String("GET") &&
-            (result.networkError || result.httpStatus == 429 || result.httpStatus >= 500);
+    result.retryable = isRetryableRequest(pending.method.toUtf8(),
+                                          result.networkError, result.httpStatus);
 
     reply->deleteLater();
 
