@@ -299,7 +299,6 @@ ApplicationWindow {
     // fade waits for it (5 s failsafe).
     Rectangle {
         id: splash
-        parent: Overlay.overlay
         anchors.fill: parent
         z: 1000
         color: Theme.bg
@@ -477,6 +476,11 @@ ApplicationWindow {
         height: 60
         anchors.topMargin: 5
         anchors.bottomMargin: 5
+        // Keep the legacy chrome in the layout, but hide it visually while the
+        // launch screen is up. Changing height/visibility here caused a startup
+        // freeze before the StackView completed.
+        opacity: window.splashVisible ? 0 : 1
+        enabled: !window.splashVisible
 
         Label {
             id: titleLabel
