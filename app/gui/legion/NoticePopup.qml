@@ -61,10 +61,10 @@ Dialog {
     onOpened: {
         centerInParent()
         if (actionButton.visible) {
-            actionButton.forceActiveFocus(Qt.TabFocus)
+            actionButton.forceActiveFocus(Qt.OtherFocusReason)
         }
         else {
-            closeButton.forceActiveFocus(Qt.TabFocus)
+            closeButton.forceActiveFocus(Qt.OtherFocusReason)
         }
     }
     onWidthChanged: if (visible) centerInParent()
