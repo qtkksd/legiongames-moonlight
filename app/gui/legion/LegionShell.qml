@@ -731,6 +731,23 @@ Item {
             }
         }
 
+        function onQueueEvent(name, data) {
+            if (shell.mode !== "app") {
+                return
+            }
+            if (name === "connected" || name === "heartbeat") {
+                return
+            }
+            // SSE is a hint to refresh the authoritative projections. Never
+            // mutate local session/queue state from the event payload.
+            shell.refreshQueue(true)
+            if (name === "promoted" || name === "claimed" ||
+                    name === "expired" || name === "left") {
+                shell.refreshSession(true)
+                shell.refreshWallet(true)
+            }
+        }
+
         function onWordsReady(handle, words) {
             shell.wordsHandle = handle ? String(handle) : shell.handle
             shell.wordsList = words ? words : []

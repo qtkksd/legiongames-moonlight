@@ -141,6 +141,7 @@ signals:
     // Additive: lets the words screen require an explicit acknowledgement when
     // the recovery kit landed in a cloud-synced Documents folder.
     void recoveryKitWritten(const QString &path, bool syncedFolder);
+    void queueEvent(const QString &name, const QVariantMap &data);
 
 private:
     bool ensureClient(const QString &op);
@@ -191,6 +192,8 @@ private:
                               std::function<void(const ApiResult &)> failed);
     void startIntentPolling(const QString &publicId);
     void pollIntentOnce();
+    void startQueueEvents();
+    void stopQueueEvents();
 
     static QVariantMap sessionData(const QJsonObject &json);
     static QVariantMap entryData(const QJsonObject &json);
@@ -200,6 +203,7 @@ private:
     Vault *m_vault = nullptr;
     AccountClient *m_client = nullptr;
     DeviceKey *m_deviceKey = nullptr;
+    QueueEventStream *m_queueEvents = nullptr;
     QTimer *m_pollTimer = nullptr;
 
     QString m_state = QStringLiteral("no_account");

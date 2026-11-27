@@ -185,6 +185,7 @@ macx {
 
 SOURCES += \
     account/accountclient.cpp \
+    account/queueeventstream.cpp \
     account/consent.cpp \
     account/cryptoutil.cpp \
     account/deeplink.cpp \
@@ -239,6 +240,7 @@ SOURCES += \
 
 HEADERS += \
     account/accountclient.h \
+    account/queueeventstream.h \
     account/consent.h \
     account/cryptoutil.h \
     account/deeplink.h \

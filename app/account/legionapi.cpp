@@ -1,6 +1,7 @@
 #include "legionapi.h"
 
 #include "accountclient.h"
+#include "queueeventstream.h"
 #include "cryptoutil.h"
 #include "devicekey.h"
 #include "path.h"
@@ -111,6 +112,7 @@ LegionApi::LegionApi(QObject *parent) :
 
 LegionApi::~LegionApi()
 {
+    stopQueueEvents();
     if (m_client != nullptr) {
         m_client->setDeviceKey(nullptr);
         delete m_client;
@@ -131,6 +133,20 @@ void LegionApi::initialize()
 
     m_vault = new Vault();
     m_client = new AccountClient(m_vault, this);
+    m_queueEvents = new QueueEventStream(this);
+    connect(m_queueEvents, &QueueEventStream::event, this,
+            [this](const QString &name, const QJsonObject &data) {
+                emit queueEvent(name, data.toVariantMap());
+            });
+    connect(m_queueEvents, &QueueEventStream::failed, this,
+            [](const QString &code, const QString &message) {
+                qWarning() << "Queue SSE:" << code << message;
+            });
+    connect(m_client, &AccountClient::tokensChanged, this, [this]() {
+        if (m_state == QLatin1String("signed_in")) {
+            startQueueEvents();
+        }
+    });
     qInfo() << "Account: vault backend" << m_vault->backendName();
 
     connect(m_client, &AccountClient::authenticationLost, this, [this](const QString &code) {
@@ -298,6 +314,12 @@ void LegionApi::setState(const QString &state)
         return;
     }
     m_state = state;
+    if (state == QLatin1String("signed_in")) {
+        startQueueEvents();
+    }
+    else {
+        stopQueueEvents();
+    }
     emit stateChanged();
 }
 
@@ -308,6 +330,24 @@ void LegionApi::setBusy(bool busy)
     }
     m_busy = busy;
     emit busyChanged();
+}
+
+void LegionApi::startQueueEvents()
+{
+    if (m_queueEvents == nullptr || m_client == nullptr) {
+        return;
+    }
+    if (!m_client->hasAccessToken()) {
+        return;
+    }
+    m_queueEvents->start(m_client->accessToken());
+}
+
+void LegionApi::stopQueueEvents()
+{
+    if (m_queueEvents != nullptr) {
+        m_queueEvents->stop();
+    }
 }
 
 void LegionApi::clearError()
