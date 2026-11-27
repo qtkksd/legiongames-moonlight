@@ -21,6 +21,16 @@ Item {
 
     visible: shell !== null && (shell.mode === "app" || shell.mode === "onboarding")
 
+    Connections {
+        target: center.shell
+        ignoreUnknownSignals: true
+        function onModeChanged() {
+            if (!center.shell || center.shell.mode === "startup") {
+                center.clear()
+            }
+        }
+    }
+
     onPopupChanged: {
         if (center.popup) {
             popupView.open()

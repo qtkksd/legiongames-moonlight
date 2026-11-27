@@ -153,5 +153,14 @@ Dialog {
         }
     }
 
+    onOpened: {
+        if (actionButton.visible) {
+            actionButton.forceActiveFocus(Qt.TabFocus)
+        }
+        else {
+            closeButton.forceActiveFocus(Qt.TabFocus)
+        }
+    }
+
     onClosed: dismissed()
 }
