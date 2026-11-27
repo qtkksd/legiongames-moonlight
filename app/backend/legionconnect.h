@@ -1,8 +1,10 @@
 #pragma once
 
 #include <QObject>
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 
 class ComputerManager;
 class NvComputer;
@@ -27,6 +29,7 @@ public:
     explicit LegionConnect(ComputerManager* manager, QObject* parent = nullptr);
 
     void start(const QString& code, const QString& proof = QString());
+    void startWithPayload(const QVariantMap& data);
     void disconnect();
 
     // Blocking teardown for application shutdown. aboutToQuit is emitted after
@@ -58,6 +61,7 @@ private:
     void fail(const QString& error);
     void runNetbird(const QStringList& args, Stage stage);
     void downloadSetupKeyFromReply(QNetworkReply* reply);
+    void applyConnectPayload(const QJsonObject& object);
     void addHost();
     void startPairing(NvComputer* computer);
     void submitPin();

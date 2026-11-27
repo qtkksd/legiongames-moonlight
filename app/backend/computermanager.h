@@ -15,6 +15,7 @@
 #include <QSettings>
 #include <QRunnable>
 #include <QTimer>
+#include <QVariantMap>
 #include <QMutex>
 #include <QWaitCondition>
 
@@ -231,6 +232,7 @@ public:
 
     // LegionGames one-time-code connect flow
     Q_INVOKABLE void startLegionConnect(QString code, QString proof = QString());
+    Q_INVOKABLE void startLegionConnectWithData(const QVariantMap &data);
     Q_INVOKABLE void stopLegionConnect();
 
     void addNewHost(NvAddress address, bool mdns, QString name = QString(), NvAddress mdnsIpv6Address = NvAddress());

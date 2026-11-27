@@ -102,6 +102,7 @@ public:
     Q_INVOKABLE void getSessionHistory();
     Q_INVOKABLE void stopSession(const QString &id);
     Q_INVOKABLE void reconnectSession(const QString &id);
+    Q_INVOKABLE void connectSession(const QString &id);
 
     Q_INVOKABLE void getQueue();
     Q_INVOKABLE void joinQueue(int clubId);

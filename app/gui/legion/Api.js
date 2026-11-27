@@ -13,7 +13,7 @@
 //   logout, confirmWordsSaved, reissueWords, reprintRecoveryKit, recoverComplete,
 //   refreshMe, getClubs, getClub, getWallet, createTopup, pollIntent,
 //   reissueHandoff, startSession, getCurrentSession, stopSession,
-//   reconnectSession, connectProof, getQueue, joinQueue,
+//   reconnectSession, connectSession, connectProof, getQueue, joinQueue,
 //   leaveQueue, claimQueue,
 //   getLegalDocuments, deleteAccount, openExternal, openLogFolder,
 //   retryFailedStep
@@ -214,6 +214,10 @@ function stopSession(api, id) {
 
 function reconnectSession(api, id) {
     return call1(api, "reconnectSession", id)
+}
+
+function connectSession(api, id) {
+    return call1(api, "connectSession", id)
 }
 
 // Proof for POST /api/client/connect. The server requires it when the
@@ -770,6 +774,7 @@ function opTitle(op) {
     case "session_current":
     case "session_stop":
     case "session_reconnect":
+    case "session_connect":
         return "Сессия"
     case "queue":
     case "queue_join":

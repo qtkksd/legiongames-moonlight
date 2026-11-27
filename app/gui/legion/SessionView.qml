@@ -81,7 +81,7 @@ LegionView {
     }
 
     function connectNow() {
-        if (!session) {
+        if (!session || connecting) {
             return
         }
         if (code.length === 0) {
@@ -90,16 +90,13 @@ LegionView {
         }
         connectError = ""
         connectProgress = 0
-        connectStage = qsTr("Проверяем код подключения…")
-        var proof = Api.connectProof(api, code)
-        if (proof.length === 0) {
-            connectStage = ""
-            connectError = qsTr("Не удалось подтвердить устройство. Перезапустите приложение.")
-            connecting = false
-            return
-        }
+        connectStage = qsTr("Получаем данные подключения…")
         connecting = true
-        ComputerManager.startLegionConnect(code, proof)
+        if (!Api.connectSession(api, session.id)) {
+            connecting = false
+            connectStage = ""
+            connectError = qsTr("Не удалось получить данные подключения.")
+        }
     }
 
     function openComputerList() {
@@ -141,6 +138,10 @@ LegionView {
                     sessionView.shell.refreshWallet(true)
                 }
             }
+            else if (op === "session_connect") {
+                sessionView.connectStage = qsTr("Подключаем NetBird…")
+                ComputerManager.startLegionConnectWithData(data)
+            }
             else if (op === "session_reconnect") {
                 sessionView.connectError = ""
             }
@@ -153,6 +154,11 @@ LegionView {
                 if (sessionView.shell) {
                     sessionView.shell.refreshSession(true)
                 }
+            }
+            else if (op === "session_connect") {
+                sessionView.connecting = false
+                sessionView.connectStage = ""
+                sessionView.showError(code, message, op)
             }
             else if (op === "session_reconnect" || op === "session_current") {
                 sessionView.showError(code, message, op)

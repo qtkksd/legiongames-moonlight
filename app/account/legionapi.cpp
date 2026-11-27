@@ -2255,6 +2255,31 @@ void LegionApi::stopSession(const QString &id)
                    });
 }
 
+void LegionApi::connectSession(const QString &id)
+{
+    if (!ensureAccount(QStringLiteral("session_connect"))) {
+        return;
+    }
+    if (id.trimmed().isEmpty()) {
+        fail(QStringLiteral("session_connect"), QStringLiteral("validation_error"),
+             QStringLiteral("Сеанс не найден."));
+        return;
+    }
+    setBusy(true);
+    clearError();
+    m_client->post(QStringLiteral("/sessions/") + id.trimmed() + QStringLiteral("/connect"),
+                   QJsonObject(), true, CryptoUtil::randomUuid(),
+                   [this](const ApiResult &result) {
+                       setBusy(false);
+                       if (!result.ok) {
+                           failFromResult(QStringLiteral("session_connect"), result);
+                           return;
+                       }
+                       emit response(QStringLiteral("session_connect"),
+                                     result.json.toVariantMap());
+                   });
+}
+
 void LegionApi::reconnectSession(const QString &id)
 {
     if (!ensureAccount(QStringLiteral("session_reconnect"))) {

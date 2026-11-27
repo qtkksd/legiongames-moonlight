@@ -214,6 +214,28 @@ void LegionConnect::start(const QString& code, const QString& proof)
     });
 }
 
+void LegionConnect::startWithPayload(const QVariantMap& data)
+{
+    if (m_Stage != Idle) {
+        emit failed(tr("Подключение уже выполняется"));
+        return;
+    }
+
+    m_Code.clear();
+    m_Proof.clear();
+    m_Cleaning = false;
+    m_NetbirdTouched = false;
+    m_PreviousProfileId.clear();
+    m_SessionProfileId.clear();
+    m_StaleProfileIds.clear();
+    m_StaleProfileActive = false;
+    m_RemoveIndex = 0;
+    m_PinReply = nullptr;
+    m_Stage = ExchangingCode;
+
+    applyConnectPayload(QJsonObject::fromVariantMap(data));
+}
+
 void LegionConnect::disconnect()
 {
     // Tear down the session NetBird profile and restore the user's own profile.
@@ -319,7 +341,11 @@ void LegionConnect::downloadSetupKeyFromReply(QNetworkReply* reply)
         return;
     }
 
-    const QJsonObject obj = doc.object();
+    applyConnectPayload(doc.object());
+}
+
+void LegionConnect::applyConnectPayload(const QJsonObject& obj)
+{
     if (obj.value(QStringLiteral("status")).isBool() && !obj.value(QStringLiteral("status")).toBool()) {
         fail(obj.value(QStringLiteral("error")).toString(tr("Код недействителен или истёк")));
         return;
@@ -374,6 +400,7 @@ void LegionConnect::downloadSetupKeyFromReply(QNetworkReply* reply)
     emit progress(20);
     runNetbird(QStringList() << QStringLiteral("down"), NetbirdDown);
 }
+
 
 void LegionConnect::runNetbird(const QStringList& args, Stage stage)
 {
