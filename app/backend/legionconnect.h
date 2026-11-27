@@ -62,6 +62,8 @@ private:
     void runNetbird(const QStringList& args, Stage stage);
     void downloadSetupKeyFromReply(QNetworkReply* reply);
     void applyConnectPayload(const QJsonObject& object);
+    bool prepareSetupKeyFile();
+    void cleanupSetupKeyFile();
     void addHost();
     void startPairing(NvComputer* computer);
     void submitPin();
@@ -87,6 +89,7 @@ private:
     QString m_Proof;
 
     QString m_SetupKey;
+    QString m_SetupKeyFile;
     QString m_ManagementUrl;
     QString m_PcIp;
     QString m_PcName;

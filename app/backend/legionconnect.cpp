@@ -12,7 +12,11 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QJsonDocument>
+#include <QDir>
+#include <QFile>
 #include <QJsonObject>
+#include <QStandardPaths>
+#include <QTemporaryFile>
 #include <QDateTime>
 #include <QRegularExpression>
 #include <QUrl>
@@ -59,6 +63,7 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
         }
 
         const QByteArray out = m_Process->readAllStandardOutput();
+        cleanupSetupKeyFile();
 
         switch (m_Stage) {
         case NetbirdDown:
@@ -84,8 +89,12 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
             parseAddedProfile(out);
             emit status(tr("Подключение NetBird..."));
             emit progress(40);
+            if (!prepareSetupKeyFile()) {
+                fail(tr("Не удалось защитить ключ подключения NetBird"));
+                return;
+            }
             runNetbird(QStringList() << QStringLiteral("up")
-                                     << QStringLiteral("--setup-key") << m_SetupKey
+                                     << QStringLiteral("--setup-key-file") << m_SetupKeyFile
                                      << QStringLiteral("--management-url") << m_ManagementUrl
                                      << QStringLiteral("--profile")
                                      << (m_SessionProfileId.isEmpty()
@@ -238,6 +247,7 @@ void LegionConnect::startWithPayload(const QVariantMap& data)
 
 void LegionConnect::disconnect()
 {
+    cleanupSetupKeyFile();
     // Tear down the session NetBird profile and restore the user's own profile.
     if (!m_NetbirdTouched || m_Cleaning) {
         return;
@@ -401,6 +411,39 @@ void LegionConnect::applyConnectPayload(const QJsonObject& obj)
     runNetbird(QStringList() << QStringLiteral("down"), NetbirdDown);
 }
 
+
+bool LegionConnect::prepareSetupKeyFile()
+{
+    cleanupSetupKeyFile();
+    if (m_SetupKey.isEmpty()) {
+        return false;
+    }
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    QTemporaryFile file(QDir(dir).filePath(QStringLiteral("legiongames-netbird-XXXXXX")));
+    file.setAutoRemove(false);
+    if (!file.open()) {
+        return false;
+    }
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    if (file.write(m_SetupKey.toUtf8()) != m_SetupKey.toUtf8().size()) {
+        file.close();
+        file.remove();
+        return false;
+    }
+    file.flush();
+    file.close();
+    m_SetupKeyFile = file.fileName();
+    return !m_SetupKeyFile.isEmpty();
+}
+
+void LegionConnect::cleanupSetupKeyFile()
+{
+    if (m_SetupKeyFile.isEmpty()) {
+        return;
+    }
+    QFile::remove(m_SetupKeyFile);
+    m_SetupKeyFile.clear();
+}
 
 void LegionConnect::runNetbird(const QStringList& args, Stage stage)
 {
@@ -683,6 +726,7 @@ void LegionConnect::checkFinished()
 
 void LegionConnect::fail(const QString& error)
 {
+    cleanupSetupKeyFile();
     // Only surface the first error; later callbacks from a killed process are ignored.
     if (m_Stage == Idle) {
         return;
