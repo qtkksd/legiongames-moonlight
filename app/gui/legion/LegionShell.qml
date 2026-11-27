@@ -90,58 +90,53 @@ Item {
         }
     }
 
-    // Shared server snapshots. Views read these instead of fetching twice.
-    property var session: null
-    property var queueEntry: null
-    property var wallet: []
-    property var catalog: []
-    property string catalogAt: ""
-    property bool catalogLoading: false
-    property string catalogErrorCode: ""
-    property string catalogErrorMessage: ""
+    // Shared server snapshots. The store is the only owner of cache keys,
+    // TTLs, in-flight guards and mutation ordering; the shell exposes aliases
+    // so existing views keep their stable read API.
+    QueryStore {
+        id: queryStore
+        api: shell.api
+    }
 
-    // Cache-first data. Views render the last snapshot immediately and only
-    // revalidate after the short TTL. Mutations use force=true to invalidate.
-    // Availability changes quickly at a club. Keep the display window short
-    // (the server still re-checks every mutation); a long club TTL made the
-    // list and the detail page disagree for up to 45 seconds.
-    readonly property int catalogCacheTtlMs: 5000
-    readonly property int clubCacheTtlMs: 10000
-    readonly property int walletCacheTtlMs: 10000
-    readonly property int sessionCacheTtlMs: 5000
-    readonly property int queueCacheTtlMs: 3000
-    property int queuePollInterval: 5000
-
-    property double catalogFetchedAt: 0
-    property var clubFetchedAt: ({})
-    property var clubInFlight: ({})
-    property var clubDirty: ({})
-    property double walletFetchedAt: 0
-    property double sessionFetchedAt: 0
-    property double queueFetchedAt: 0
-    property var sessionHistory: []
-    property double sessionHistoryFetchedAt: 0
-    property bool sessionHistoryLoading: false
-    property bool sessionHistoryInFlight: false
-    property string sessionHistoryError: ""
-    readonly property int sessionHistoryCacheTtlMs: 30000
-    property bool catalogInFlight: false
-    property bool walletInFlight: false
-    property bool sessionInFlight: false
-    property bool queueInFlight: false
-    property bool catalogDirty: false
-    property bool walletDirty: false
-    property bool sessionDirty: false
-    property bool queueDirty: false
-
-    // A current-session/queue read is a snapshot. If a mutation completes
-    // while the read is in flight, the mutation is newer and the snapshot
-    // must be discarded even if a follow-up refresh fails. The read captures
-    // the mutation sequence at start; each mutation completion bumps it.
-    property int sessionMutationSeq: 0
-    property int sessionReadMutationSeq: 0
-    property int queueMutationSeq: 0
-    property int queueReadMutationSeq: 0
+    property alias session: queryStore.session
+    property alias queueEntry: queryStore.queueEntry
+    property alias wallet: queryStore.wallet
+    property alias catalog: queryStore.catalog
+    property alias catalogAt: queryStore.catalogAt
+    property alias catalogLoading: queryStore.catalogLoading
+    property alias catalogErrorCode: queryStore.catalogErrorCode
+    property alias catalogErrorMessage: queryStore.catalogErrorMessage
+    property alias catalogFetchedAt: queryStore.catalogFetchedAt
+    property alias clubFetchedAt: queryStore.clubFetchedAt
+    property alias clubInFlight: queryStore.clubInFlight
+    property alias clubDirty: queryStore.clubDirty
+    property alias walletFetchedAt: queryStore.walletFetchedAt
+    property alias sessionFetchedAt: queryStore.sessionFetchedAt
+    property alias queueFetchedAt: queryStore.queueFetchedAt
+    property alias sessionHistory: queryStore.sessionHistory
+    property alias sessionHistoryFetchedAt: queryStore.sessionHistoryFetchedAt
+    property alias sessionHistoryLoading: queryStore.sessionHistoryLoading
+    property alias sessionHistoryInFlight: queryStore.sessionHistoryInFlight
+    property alias sessionHistoryError: queryStore.sessionHistoryError
+    property alias catalogInFlight: queryStore.catalogInFlight
+    property alias walletInFlight: queryStore.walletInFlight
+    property alias sessionInFlight: queryStore.sessionInFlight
+    property alias queueInFlight: queryStore.queueInFlight
+    property alias catalogDirty: queryStore.catalogDirty
+    property alias walletDirty: queryStore.walletDirty
+    property alias sessionDirty: queryStore.sessionDirty
+    property alias queueDirty: queryStore.queueDirty
+    property alias sessionMutationSeq: queryStore.sessionMutationSeq
+    property alias sessionReadMutationSeq: queryStore.sessionReadMutationSeq
+    property alias queueMutationSeq: queryStore.queueMutationSeq
+    property alias queueReadMutationSeq: queryStore.queueReadMutationSeq
+    property alias queuePollInterval: queryStore.queuePollInterval
+    readonly property int catalogCacheTtlMs: queryStore.catalogCacheTtlMs
+    readonly property int clubCacheTtlMs: queryStore.clubCacheTtlMs
+    readonly property int walletCacheTtlMs: queryStore.walletCacheTtlMs
+    readonly property int sessionCacheTtlMs: queryStore.sessionCacheTtlMs
+    readonly property int queueCacheTtlMs: queryStore.queueCacheTtlMs
+    readonly property int sessionHistoryCacheTtlMs: queryStore.sessionHistoryCacheTtlMs
 
     // Navigation
     property string section: "home"
@@ -267,192 +262,59 @@ Item {
     // ---- server data ----------------------------------------------------
 
     function loadCatalog(availableOnly, force) {
-        // The app keeps one full catalog and filters it locally. The
-        // availableOnly argument is kept for call-site compatibility.
-        if (catalogInFlight) {
-            if (force) {
-                catalogDirty = true
-            }
-            return false
-        }
-        if (!force && catalogFetchedAt > 0 &&
-                (Date.now() - catalogFetchedAt) < catalogCacheTtlMs) {
-            return false
-        }
-        catalogInFlight = true
-        catalogLoading = true
-        catalogErrorCode = ""
-        catalogErrorMessage = ""
-        if (!Api.getClubs(api, false)) {
-            catalogInFlight = false
-            catalogLoading = false
-            catalogErrorCode = "offline"
-            catalogErrorMessage = ""
-            return false
-        }
-        return true
+        return queryStore.loadCatalog(availableOnly, force)
     }
 
     function clubFetchedAtMs(slug) {
-        if (!slug) {
-            return 0
-        }
-        var value = clubFetchedAt[String(slug)]
-        return value ? Number(value) : 0
+        return queryStore.clubFetchedAtMs(slug)
     }
 
     function refreshClub(slug, force) {
-        var key = slug ? String(slug).trim() : ""
-        if (key.length === 0) {
-            return false
-        }
-        if (clubInFlight[key] === true) {
-            if (force) {
-                clubDirty[key] = true
-            }
-            return false
-        }
-        var fetchedAt = clubFetchedAtMs(key)
-        if (!force && fetchedAt > 0 &&
-                (Date.now() - fetchedAt) < clubCacheTtlMs) {
-            return false
-        }
-        clubInFlight[key] = true
-        if (!Api.getClub(api, key)) {
-            clubInFlight[key] = false
-            return false
-        }
-        return true
+        return queryStore.refreshClub(slug, force)
     }
 
     function refreshWallet(force) {
-        if (walletInFlight) {
-            if (force) {
-                walletDirty = true
-            }
-            return false
-        }
-        if (!force && walletFetchedAt > 0 &&
-                (Date.now() - walletFetchedAt) < walletCacheTtlMs) {
-            return false
-        }
-        walletInFlight = true
-        if (!Api.getWallet(api)) {
-            walletInFlight = false
-            return false
-        }
-        return true
+        return queryStore.refreshWallet(force)
     }
 
     function refreshWalletIfStale() {
-        return refreshWallet(false)
+        return queryStore.refreshWalletIfStale()
     }
 
     function refreshSession(force) {
-        if (sessionInFlight) {
-            if (force) {
-                sessionDirty = true
-            }
-            return false
-        }
-        if (!force && sessionFetchedAt > 0 &&
-                (Date.now() - sessionFetchedAt) < sessionCacheTtlMs) {
-            return false
-        }
-        sessionReadMutationSeq = sessionMutationSeq
-        sessionInFlight = true
-        if (!Api.getCurrentSession(api)) {
-            sessionInFlight = false
-            return false
-        }
-        return true
+        return queryStore.refreshSession(force)
     }
 
     function refreshQueue(force) {
-        if (queueInFlight) {
-            if (force) {
-                queueDirty = true
-            }
-            return false
-        }
-        if (!force && queueFetchedAt > 0 &&
-                (Date.now() - queueFetchedAt) < queueCacheTtlMs) {
-            return false
-        }
-        queueReadMutationSeq = queueMutationSeq
-        queueInFlight = true
-        if (!Api.getQueue(api)) {
-            queueInFlight = false
-            return false
-        }
-        return true
+        return queryStore.refreshQueue(force)
     }
 
     function refreshSessionHistory(force) {
-        if (sessionHistoryInFlight) {
-            return false
-        }
-        if (!force && sessionHistoryFetchedAt > 0 &&
-                (Date.now() - sessionHistoryFetchedAt) < sessionHistoryCacheTtlMs) {
-            return false
-        }
-        sessionHistoryInFlight = true
-        sessionHistoryLoading = true
-        sessionHistoryError = ""
-        if (!Api.getSessionHistory(api)) {
-            sessionHistoryInFlight = false
-            sessionHistoryLoading = false
-            sessionHistoryError = "offline"
-            return false
-        }
-        return true
+        return queryStore.refreshSessionHistory(force)
     }
 
     function refreshAll(force) {
-        loadCatalog(false, force === true)
-        refreshWallet(force === true)
-        refreshSession(force === true)
-        refreshQueue(force === true)
+        return queryStore.refreshAll(force)
     }
 
     function clubById(id) {
-        return Api.clubById(catalog, id)
+        return queryStore.clubById(id)
     }
 
     function clubName(id) {
-        return Api.clubName(catalog, id)
+        return queryStore.clubName(id)
     }
 
-    // Replace one catalog row with a fresher server payload. The home and
-    // clubs views read `catalog`, so a detail fetch immediately updates the
-    // free-PC count everywhere instead of leaving a stale list behind.
     function updateClub(updated) {
-        if (!updated || updated.id === undefined) {
-            return
-        }
-        var next = []
-        var replaced = false
-        for (var i = 0; i < catalog.length; i++) {
-            if (String(catalog[i].id) === String(updated.id)) {
-                next.push(updated)
-                replaced = true
-            }
-            else {
-                next.push(catalog[i])
-            }
-        }
-        if (!replaced) {
-            next.push(updated)
-        }
-        catalog = next
+        queryStore.updateClub(updated)
     }
 
     function walletFor(clubId) {
-        return Api.walletFor(wallet, clubId)
+        return queryStore.walletFor(clubId)
     }
 
     function balanceFor(clubId) {
-        return Api.balanceFor(wallet, clubId)
+        return queryStore.balanceFor(clubId)
     }
 
     function primeApp() {

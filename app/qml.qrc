@@ -21,6 +21,7 @@
         <file>gui/CliPair.qml</file>
         <file>gui/legion/Api.js</file>
         <file>gui/legion/Theme.js</file>
+        <file>gui/legion/QueryStore.qml</file>
         <file>gui/legion/LegionView.qml</file>
         <file>gui/legion/NeonFrame.qml</file>
         <file>gui/legion/LegionButton.qml</file>
