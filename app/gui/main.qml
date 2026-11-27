@@ -299,6 +299,7 @@ ApplicationWindow {
     // fade waits for it (5 s failsafe).
     Rectangle {
         id: splash
+        parent: Overlay.overlay
         anchors.fill: parent
         z: 1000
         color: Theme.bg
