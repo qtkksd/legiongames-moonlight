@@ -1,9 +1,9 @@
 import QtQuick 2.9
-import QtGraphicalEffects 1.0
 
-// Product modal backdrop: a dimmed, blurred snapshot of the app surface.
-// Snapshotting instead of live-blurring keeps the cost to one capture per
-// popup and avoids repainting the whole window every frame.
+// Product modal backdrop: dimmed background plus a blurred snapshot.
+// Qt 5 uses QtGraphicalEffects FastBlur; Qt 6 uses the built-in MultiEffect.
+// The implementation is in a Loader so a Qt 6 build never imports the Qt 5
+// effects module (and vice versa).
 Item {
     id: backdrop
 
@@ -14,30 +14,21 @@ Item {
     visible: active
     z: 0
 
-    onActiveChanged: {
-        if (active) {
-            snapshot.scheduleUpdate()
+    Loader {
+        id: blurLoader
+        anchors.fill: parent
+        source: (typeof lgQt6 !== "undefined" && lgQt6)
+                ? "qrc:/gui/legion/ModalBackdropQt6.qml"
+                : "qrc:/gui/legion/ModalBackdropQt5.qml"
+
+        onLoaded: {
+            item.active = Qt.binding(function() { return backdrop.active })
+            item.backgroundSource = Qt.binding(function() { return backdrop.backgroundSource })
         }
     }
 
-    ShaderEffectSource {
-        id: snapshot
-        anchors.fill: parent
-        sourceItem: backdrop.backgroundSource
-        live: false
-        recursive: true
-        hideSource: backdrop.active && backdrop.backgroundSource !== null
-        textureSize: Qt.size(Math.max(1, Math.round(backdrop.width / 2)),
-                             Math.max(1, Math.round(backdrop.height / 2)))
-    }
-
-    FastBlur {
-        anchors.fill: parent
-        source: snapshot
-        radius: 10
-        visible: backdrop.backgroundSource !== null
-    }
-
+    // Always present: this is also the safe fallback when the blur backend
+    // fails to load or the platform has no usable shader path.
     Rectangle {
         anchors.fill: parent
         color: "#000000"

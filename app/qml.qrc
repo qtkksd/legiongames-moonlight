@@ -29,6 +29,8 @@
         <file>gui/legion/NotificationCenter.qml</file>
         <file>gui/legion/NoticePopup.qml</file>
         <file>gui/legion/ModalBackdrop.qml</file>
+        <file>gui/legion/ModalBackdropQt6.qml</file>
+        <file>gui/legion/ModalBackdropQt5.qml</file>
         <file>gui/legion/NoticeBanner.qml</file>
         <file>gui/legion/Notice.js</file>
         <file>gui/legion/EmptyState.qml</file>

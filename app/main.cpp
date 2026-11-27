@@ -1112,6 +1112,11 @@ int main(int argc, char *argv[])
 #else
         engine.rootContext()->setContextProperty("lgStagingBuild", false);
 #endif
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        engine.rootContext()->setContextProperty("lgQt6", true);
+#else
+        engine.rootContext()->setContextProperty("lgQt6", false);
+#endif
         engine.rootContext()->setContextProperty("initialView", initialView);
         engine.rootContext()->setContextProperty("runConfigChecks", commandLineParserResult == GlobalCommandLineParser::NormalStartRequested);
         auto streamLauncher = new StreamLauncher(&app);
