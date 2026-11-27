@@ -89,7 +89,7 @@ ApplicationWindow {
         // The initial StackView push happens before the header exists, so the
         // chrome state is applied once here.
         uiReady = true
-        refreshChrome()
+        toolBar.visible = !legionShellShown()
         tryDismissSplash()
     }
 
@@ -199,25 +199,6 @@ ApplicationWindow {
                stackView.currentItem.objectName === "legion-shell"
     }
 
-    // The launch screen owns the whole window, including the Material header.
-    // The header is outside the content overlay, so hiding only the StackView
-    // would still leave the red ToolBar visible for a frame.
-    function refreshChrome() {
-        // This can be reached from an early property-change handler while the
-        // rest of the window is still being constructed.
-        if (!uiReady || !toolBar || !stackView) {
-            return
-        }
-        toolBar.height = splashVisible ? 0 : 60
-        toolBar.visible = !splashVisible && !legionShellShown()
-    }
-
-    onSplashDismissedChanged: {
-        if (uiReady) {
-            refreshChrome()
-        }
-    }
-
     StackView {
         id: stackView
         anchors.fill: parent
@@ -245,7 +226,7 @@ ApplicationWindow {
             // it provides its own rail and header. StreamSegue toggles the
             // same toolbar directly, so this is reassigned on every change.
             if (uiReady) {
-                refreshChrome()
+                toolBar.visible = !legionShellShown()
             }
             tryDismissSplash()
         }
@@ -286,7 +267,7 @@ ApplicationWindow {
     Rectangle {
         anchors.fill: parent
         color: "#0d0d0d"
-        visible: uiReady && stackView.currentItem === null && !window.splashVisible
+        visible: uiReady && stackView.currentItem === null
         z: 100
 
         Column {
@@ -492,11 +473,7 @@ ApplicationWindow {
 
     header: ToolBar {
         id: toolBar
-        // The launch screen must not expose the legacy red Material header.
-        // Height is applied by refreshChrome() after uiReady, not by a binding
-        // that can be evaluated while the window tree is still incomplete.
-        visible: false
-        height: 0
+        height: 60
         anchors.topMargin: 5
         anchors.bottomMargin: 5
 
@@ -504,7 +481,7 @@ ApplicationWindow {
             id: titleLabel
             visible: toolBar.width > 700
             anchors.fill: parent
-            text: stackView.currentItem ? stackView.currentItem.objectName : ""
+            text: stackView.currentItem.objectName
             font.pointSize: 20
             elide: Label.ElideRight
             horizontalAlignment: Qt.AlignHCenter
@@ -543,8 +520,7 @@ ApplicationWindow {
                 // We need this label to always be visible so it can occupy
                 // the remaining space in the RowLayout. To "hide" it, we
                 // just set the text to empty string.
-                text: !titleLabel.visible && stackView.currentItem
-                      ? stackView.currentItem.objectName : ""
+                text: !titleLabel.visible ? stackView.currentItem.objectName : ""
             }
 
             Label {
