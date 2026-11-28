@@ -45,6 +45,10 @@
     <util:RegistrySearch Variable="AddDesktopShortcutCheckbox" Root="HKCU" Key="Software\Moonlight Game Streaming Project" Value="DesktopShortcutInstallState" Condition="HasDesktopShortcutInstallStateRegKey" />
 
     <BootstrapperApplication>
+      <!-- license.rtf stays the GPLv3 notice shown by the bootstrapper. The
+           MSI installs THIRD-PARTY-NOTICES.md, LICENSE and
+           LICENSES/BSD-3-Clause.txt next to the application; they are not
+           merged into license.rtf. -->
       <bal:WixStandardBootstrapperApplication ShowVersion="yes"
                                               LicenseFile="license.rtf"
                                               LogoFile="..\..\app\moonlight_wix.png"

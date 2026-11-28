@@ -1,4 +1,4 @@
-<Project Sdk="WixToolset.Sdk/7.0.0" ToolsVersion="5.0">
+<Project Sdk="WixToolset.Sdk/7.0.0" ToolsVersion="5.0" InitialTargets="StageLicenceNotices">
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DefineConstants>Debug</DefineConstants>
   </PropertyGroup>
@@ -22,4 +22,22 @@
     <PackageReference Include="WixToolset.Firewall.wixext" Version="7.0.0" />
     <PackageReference Include="WixToolset.Util.wixext" Version="7.0.0" />
   </ItemGroup>
+
+  <!-- Product.wxs harvests DeployDir into the MSI. Stage the licence and notice
+       files there before the harvest so they are installed with the app and are
+       also present in the portable package. -->
+  <Target Name="StageLicenceNotices">
+    <Error Condition="'$(DEPLOY_FOLDER)' == ''"
+           Text="DEPLOY_FOLDER must be set to stage THIRD-PARTY-NOTICES.md, LICENSE and LICENSES/." />
+    <MakeDir Directories="$(DEPLOY_FOLDER)\LICENSES" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\THIRD-PARTY-NOTICES.md"
+          DestinationFolder="$(DEPLOY_FOLDER)"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\LICENSE"
+          DestinationFolder="$(DEPLOY_FOLDER)"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\..\LICENSES\BSD-3-Clause.txt"
+          DestinationFolder="$(DEPLOY_FOLDER)\LICENSES"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

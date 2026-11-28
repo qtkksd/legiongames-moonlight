@@ -45,6 +45,25 @@ LegionView {
 
     readonly property bool logFolderAvailable: Api.hasOpenLogFolder(api)
 
+    // Source offer for the exact build. CI passes the full commit as COMMIT;
+    // local builds fall back to the version string, so only accept a value
+    // that looks like a git object id and otherwise let GitHub resolve HEAD.
+    readonly property string sourceRevision: {
+        var commit = SystemProperties.commitString
+                ? String(SystemProperties.commitString).trim() : ""
+        return /^[0-9a-f]{7,40}$/i.test(commit) ? commit : "HEAD"
+    }
+    readonly property string moonlightSourceUrl:
+        "https://github.com/qtkksd/legiongames-moonlight/tree/" + sourceRevision
+    readonly property string netbirdSourceUrl:
+        "https://github.com/qtkksd/legiongames-netbird/tree/v0.79.0-awg.9"
+    readonly property string thirdPartyNoticesUrl:
+        "https://github.com/qtkksd/legiongames-moonlight/blob/" + sourceRevision +
+        "/THIRD-PARTY-NOTICES.md"
+    readonly property string gplTextUrl:
+        "https://github.com/qtkksd/legiongames-moonlight/blob/" + sourceRevision +
+        "/LICENSE"
+
     readonly property bool offline: appState === "offline" || lastErrorCode === "offline"
     readonly property bool updateRequired: lastErrorCode === "client_update_required"
     readonly property bool updateAvailable: AutoUpdateChecker.updateAvailable
@@ -535,6 +554,59 @@ LegionView {
                         color: Theme.textDim
                         font.pointSize: Theme.fontSmall
                         wrapMode: Text.Wrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Theme.spaceS
+                        text: qsTr("Лицензии и исходный код")
+                        color: Theme.text
+                        font.pointSize: Theme.fontSubtitle
+                        font.bold: true
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Moonlight распространяется по GPLv3, исходный код открыт. " +
+                                   "NetBird client 0.79.0-awg.9 (тег v0.79.0-awg.9) — форк " +
+                                   "LegionGames на основе NetBird (BSD-3-Clause) с изменениями " +
+                                   "AmneziaWG. Это не официальный релиз NetBird.")
+                        color: Theme.textDim
+                        font.pointSize: Theme.fontSmall
+                        wrapMode: Text.Wrap
+                    }
+
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceS
+
+                        LegionButton {
+                            compact: true
+                            kind: "secondary"
+                            text: qsTr("Исходный код Moonlight")
+                            onClicked: settings.openUrl(settings.moonlightSourceUrl)
+                        }
+
+                        LegionButton {
+                            compact: true
+                            kind: "secondary"
+                            text: qsTr("Форк NetBird")
+                            onClicked: settings.openUrl(settings.netbirdSourceUrl)
+                        }
+
+                        LegionButton {
+                            compact: true
+                            kind: "secondary"
+                            text: qsTr("Сторонние компоненты")
+                            onClicked: settings.openUrl(settings.thirdPartyNoticesUrl)
+                        }
+
+                        LegionButton {
+                            compact: true
+                            kind: "secondary"
+                            text: qsTr("Текст GPLv3")
+                            onClicked: settings.openUrl(settings.gplTextUrl)
+                        }
                     }
 
                     Label {

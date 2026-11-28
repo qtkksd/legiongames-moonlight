@@ -47,8 +47,12 @@ popd
 
 echo Creating app bundle
 mkdir -p $DEPLOY_FOLDER/steamlink/apps/moonlight/bin
+mkdir -p $DEPLOY_FOLDER/steamlink/apps/moonlight/LICENSES
 cp $BUILD_FOLDER/app/moonlight $DEPLOY_FOLDER/steamlink/apps/moonlight/bin/ || fail "Binary copy failed!"
 cp $SOURCE_ROOT/app/deploy/steamlink/* $DEPLOY_FOLDER/steamlink/apps/moonlight/ || fail "Metadata copy failed!"
+cp $SOURCE_ROOT/THIRD-PARTY-NOTICES.md $DEPLOY_FOLDER/steamlink/apps/moonlight/ || fail "Notice copy failed!"
+cp $SOURCE_ROOT/LICENSE $DEPLOY_FOLDER/steamlink/apps/moonlight/ || fail "GPLv3 copy failed!"
+cp $SOURCE_ROOT/LICENSES/BSD-3-Clause.txt $DEPLOY_FOLDER/steamlink/apps/moonlight/LICENSES/ || fail "Licence copy failed!"
 pushd $DEPLOY_FOLDER
 zip -r $INSTALLER_FOLDER/Moonlight-SteamLink-$VERSION.zip . || fail "Zip failed!"
 popd

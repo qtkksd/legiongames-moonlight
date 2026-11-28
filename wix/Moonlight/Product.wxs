@@ -107,6 +107,9 @@
       </Component>
     </DirectoryRef>
 
+    <!-- Moonlight.wixproj stages THIRD-PARTY-NOTICES.md, LICENSE and
+         LICENSES/BSD-3-Clause.txt into DeployDir before this harvest, so they
+         are installed next to the app and included in the portable package. -->
     <ComponentGroup Id="MoonlightDependencies" Directory="INSTALLFOLDER">
       <Files Include="$(var.DeployDir)\**" />
     </ComponentGroup>

@@ -52,6 +52,14 @@ pushd $BUILD_FOLDER
 make install || fail "Make install failed!"
 popd
 
+# Licence and notice files must ship with the binary, not only in the repository.
+# Keep the AppImage layout conventional so the files are easy to find offline.
+echo Staging licences and notices
+mkdir -p $DEPLOY_FOLDER/usr/share/doc/moonlight/LICENSES
+cp $SOURCE_ROOT/THIRD-PARTY-NOTICES.md $DEPLOY_FOLDER/usr/share/doc/moonlight/ || fail "Notice copy failed!"
+cp $SOURCE_ROOT/LICENSE $DEPLOY_FOLDER/usr/share/doc/moonlight/ || fail "GPLv3 copy failed!"
+cp $SOURCE_ROOT/LICENSES/BSD-3-Clause.txt $DEPLOY_FOLDER/usr/share/doc/moonlight/LICENSES/ || fail "Licence copy failed!"
+
 # We need to manually place SDL3 in our AppImage, since linuxdeployqt
 # cannot see the dependency via ldd when it looks at SDL2-compat.
 echo Staging SDL3 library
