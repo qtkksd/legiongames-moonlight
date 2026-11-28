@@ -192,6 +192,7 @@ SOURCES += \
     account/devicekey.cpp \
     account/legionapi.cpp \
     account/recoverykit.cpp \
+    account/sessionhealthagent.cpp \
     account/updatemanifest.cpp \
     account/vault.cpp \
     backend/nvaddress.cpp \
@@ -247,6 +248,7 @@ HEADERS += \
     account/devicekey.h \
     account/legionapi.h \
     account/recoverykit.h \
+    account/sessionhealthagent.h \
     account/updatemanifest.h \
     account/vault.h \
     SDL_compat.h \

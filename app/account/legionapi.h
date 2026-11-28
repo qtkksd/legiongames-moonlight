@@ -16,6 +16,7 @@ class DeviceKey;
 class QueueEventStream;
 class QProcess;
 class QTimer;
+class SessionHealthAgent;
 class Vault;
 struct ApiResult;
 
@@ -151,6 +152,11 @@ public:
     Q_INVOKABLE void leaveQueue(const QString &id);
     Q_INVOKABLE void claimQueue(const QString &id);
 
+    // Latest lease health notice for the SDL loop. The agent also emits
+    // sessionHealthNotice; takeSessionNotice() is the pull side and consumes
+    // the oldest queued notice. Empty when nothing is pending.
+    Q_INVOKABLE QVariantMap takeSessionNotice();
+
     Q_INVOKABLE void openExternal(const QString &url);
     Q_INVOKABLE void openInstallFolder();
     Q_INVOKABLE void openLogFolder();
@@ -202,6 +208,11 @@ signals:
     // the recovery kit landed in a cloud-synced Documents folder.
     void recoveryKitWritten(const QString &path, bool syncedFolder);
     void queueEvent(const QString &name, const QVariantMap &data);
+    // Lease health, delivered by the dedicated worker thread. The notice
+    // carries code, minutes_left, close_at and message, plus action and
+    // health_state when the server supplied them.
+    void sessionHealthNotice(const QString &code, const QVariantMap &notice);
+    void sessionHealthAction(const QString &action, const QVariantMap &health);
 
 private:
     bool ensureClient(const QString &op);
@@ -255,6 +266,11 @@ private:
     void startQueueEvents();
     void stopQueueEvents();
 
+    void startHealthAgent(const QJsonObject &payload, const QString &leaseId);
+    void stopHealthAgent();
+    static QString healthTokenFromJson(const QJsonObject &json);
+    static int healthNextReportMs(const QJsonObject &json);
+
     void setLeaseId(const QString &leaseId);
     void setConnectPending(bool pending);
     void setDeletionState(const QString &requestedAt, const QString &purgeAfter);
@@ -272,6 +288,7 @@ private:
     AccountClient *m_client = nullptr;
     DeviceKey *m_deviceKey = nullptr;
     QueueEventStream *m_queueEvents = nullptr;
+    SessionHealthAgent *m_healthAgent = nullptr;
     QTimer *m_pollTimer = nullptr;
 
     QString m_state = QStringLiteral("no_account");
