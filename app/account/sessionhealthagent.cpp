@@ -597,7 +597,10 @@ int SessionHealthAgent::postReport(QNetworkAccessManager *manager,
     if (!appVersion.isEmpty()) {
         request.setRawHeader("X-Client-Version", appVersion.toUtf8());
     }
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+    // SteamLink ships Qt 5.14, where QNetworkRequest has no transfer timeout.
     request.setTransferTimeout(10000);
+#endif
 
     QNetworkReply *reply = manager->post(request, *pendingBody);
 
