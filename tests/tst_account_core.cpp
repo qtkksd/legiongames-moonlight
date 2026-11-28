@@ -538,6 +538,44 @@ private slots:
         QVERIFY(!AccountClient::isRetryableRequest(QByteArrayLiteral("GET"), false, 400));
     }
 
+    void transport_urls_share_the_account_base()
+    {
+        // The PIN relay and the queue SSE must resolve against the same base
+        // as the account client, including the LG_API_BASE_URL test override.
+        const QByteArray previous = qgetenv("LG_API_BASE_URL");
+        qputenv("LG_API_BASE_URL", QByteArrayLiteral("https://api.example.test"));
+
+        QCOMPARE(AccountClient::apiUrl(QStringLiteral("/sessions/abc/pin")).toString(),
+                 QStringLiteral("https://api.example.test/app/v1/sessions/abc/pin"));
+        QCOMPARE(AccountClient::apiUrl(QStringLiteral("sessions/abc/pin")).toString(),
+                 QStringLiteral("https://api.example.test/app/v1/sessions/abc/pin"));
+        QCOMPARE(AccountClient::apiOriginUrl(QStringLiteral("/queue/sse/")).toString(),
+                 QStringLiteral("https://api.example.test/queue/sse/"));
+
+        qputenv("LG_API_BASE_URL", QByteArrayLiteral("https://api.example.test/custom/app/v1"));
+        QCOMPARE(AccountClient::apiUrl(QStringLiteral("/sessions/abc/pin")).toString(),
+                 QStringLiteral("https://api.example.test/custom/app/v1/sessions/abc/pin"));
+        QCOMPARE(AccountClient::apiOriginUrl(QStringLiteral("/queue/sse/")).toString(),
+                 QStringLiteral("https://api.example.test/queue/sse/"));
+
+        if (previous.isEmpty()) {
+            qunsetenv("LG_API_BASE_URL");
+        }
+        else {
+            qputenv("LG_API_BASE_URL", previous);
+        }
+    }
+
+    void terminal_auth_codes_are_classified()
+    {
+        QVERIFY(AccountClient::isTerminalAuthError(QStringLiteral("session_expired")));
+        QVERIFY(AccountClient::isTerminalAuthError(QStringLiteral("session_revoked")));
+        QVERIFY(AccountClient::isTerminalAuthError(QStringLiteral("not_authenticated")));
+        QVERIFY(!AccountClient::isTerminalAuthError(QStringLiteral("device_revoked")));
+        QVERIFY(!AccountClient::isTerminalAuthError(QStringLiteral("rate_limited")));
+        QVERIFY(!AccountClient::isTerminalAuthError(QString()));
+    }
+
     void manifest_placeholder_fails_closed()
     {
         QByteArray key;

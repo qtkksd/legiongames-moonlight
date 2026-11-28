@@ -13,7 +13,8 @@
 //   logout, confirmWordsSaved, reissueWords, reprintRecoveryKit, recoverComplete,
 //   refreshMe, getClubs, getClub, getWallet, createTopup, pollIntent,
 //   reissueHandoff, startSession, getCurrentSession, stopSession,
-//   reconnectSession, connectSession, getQueue, joinQueue,
+//   reconnectSession, connectSession, resumeConnectMaterial,
+//   clearConnectMaterial, getQueue, joinQueue,
 //   leaveQueue, claimQueue,
 //   getLegalDocuments, deleteAccount, openExternal, openLogFolder,
 //   retryFailedStep
@@ -218,6 +219,21 @@ function reconnectSession(api, id) {
 
 function connectSession(api, id) {
     return call1(api, "connectSession", id)
+}
+
+// Re-emits vault-backed one-shot connect material after a page change or an
+// app restart. expectedSessionId (optional) rejects material from another lease.
+// Returns true only when valid material was found.
+function resumeConnectMaterial(api, expectedSessionId) {
+    if (!available(api) || typeof api.resumeConnectMaterial !== "function") {
+        return false
+    }
+    return api.resumeConnectMaterial(expectedSessionId ? String(expectedSessionId) : "") === true
+}
+
+// Drops the persisted one-shot connect material and the pending marker.
+function clearConnectMaterial(api) {
+    return call0(api, "clearConnectMaterial")
 }
 
 // ---- queue --------------------------------------------------------------
@@ -700,6 +716,10 @@ function errorText(code, message) {
     case "unauthenticated":
         text = "Сессия истекла. Войдите снова."
         break
+    case "session_expired":
+    case "not_authenticated":
+        text = "Сессия истекла. Войдите снова."
+        break
     case "session_revoked":
         text = "Сессия отозвана. Войдите снова."
         break
@@ -799,6 +819,9 @@ function errorText(code, message) {
         text = "Ключ устройства повреждён. Сбросьте локальные данные или восстановите доступ."
         break
     case "device_key_missing":
+        text = "Ключ устройства не найден. Восстановите доступ по словам."
+        break
+    case "no_device_key":
         text = "Ключ устройства не найден. Восстановите доступ по словам."
         break
     case "server_error":

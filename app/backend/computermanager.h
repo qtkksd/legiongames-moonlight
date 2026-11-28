@@ -230,9 +230,19 @@ public:
 
     Q_INVOKABLE void addNewHostManually(QString address);
 
-    // LegionGames one-time-code connect flow
+    // LegionGames app-first lease connect flow (NetBird + PIN + activation)
     Q_INVOKABLE void startLegionConnectWithData(const QVariantMap &data);
     Q_INVOKABLE void stopLegionConnect();
+
+    // Identity of the host the active /sessions lease was provisioned on.
+    // The product UI keeps every other discovered host inventory-only; there
+    // is no stream launch without a matching active lease.
+    Q_INVOKABLE QString legionLeaseHostUuid() const { return m_LegionLeaseHostUuid; }
+    Q_INVOKABLE QString legionLeaseHostAddress() const { return m_LegionLeaseHostAddress; }
+    Q_INVOKABLE QString legionLeaseId() const { return m_LegionLeaseId; }
+    Q_INVOKABLE void clearLegionLeaseContext();
+    // True while NetBird/pairing/PIN work is in flight for a connect.
+    Q_INVOKABLE bool legionConnectBusy() const;
 
     void addNewHost(NvAddress address, bool mdns, QString name = QString(), NvAddress mdnsIpv6Address = NvAddress());
 
@@ -268,6 +278,10 @@ signals:
 
     void legionConnectSucceeded();
 
+    // Emitted whenever the lease/host binding changes (set, identified,
+    // cleared). QML re-evaluates the lease guard on this signal.
+    void legionLeaseContextChanged();
+
 private slots:
     void handleAboutToQuit();
 
@@ -283,6 +297,10 @@ private:
     QHostAddress getBestGlobalAddressV6(QVector<QHostAddress>& addresses);
 
     void startPollingComputer(NvComputer* computer);
+
+    void loadLegionLeaseContext();
+    void saveLegionLeaseContext();
+    void setLegionLeaseId(const QString &leaseId);
 
     StreamingPreferences* m_Prefs;
     int m_PollingRef;
@@ -300,4 +318,8 @@ private:
     QMutex m_DelayedFlushMutex; // Lock ordering: Must never be acquired while holding NvComputer lock
     QWaitCondition m_DelayedFlushCondition;
     bool m_NeedsDelayedFlush;
+
+    QString m_LegionLeaseId;
+    QString m_LegionLeaseHostUuid;
+    QString m_LegionLeaseHostAddress;
 };

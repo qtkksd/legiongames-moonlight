@@ -6,6 +6,7 @@ import SdlGamepadKeyNavigation 1.0
 import Session 1.0
 import SystemProperties 1.0
 import StreamingPreferences 1.0
+import ComputerManager 1.0
 
 Item {
     property Session session
@@ -14,6 +15,11 @@ Item {
                                            qsTr("Starting %1...").arg(appName)
     property bool isResume : false
     property bool quitAfter : false
+
+    // Paid club lease this stream belongs to. Empty for a CLI launch or a
+    // legacy direct stream, which must not touch billing.
+    property string leaseId : ""
+    property bool leaseEnded : false
 
     function stageStarting(stage)
     {
@@ -50,8 +56,34 @@ Item {
         console.error(text)
     }
 
+    function endLease()
+    {
+        // The stream is over: stop the paid lease and tear the session NetBird
+        // profile down. The server remains authoritative and idempotent, so a
+        // stop from SessionView or the quit hook racing this one is safe.
+        if (leaseEnded || leaseId.length === 0) {
+            return
+        }
+        leaseEnded = true
+
+        ComputerManager.stopLegionConnect()
+
+        try {
+            if (typeof legionApi !== "undefined" && legionApi) {
+                legionApi.stopSession(leaseId)
+            }
+        }
+        catch (error) {
+            console.warn("Cannot stop the session lease:", error)
+        }
+    }
+
     function quitStarting()
     {
+        // Host/gamepad quit destroys this page via stackView.replace(), so the
+        // lease must be ended here; sessionFinished() may never run.
+        endLease()
+
         // Avoid the push transition animation
         var component = Qt.createComponent("QuitSegue.qml")
         stackView.replace(stackView.currentItem, component.createObject(stackView, {"appName": appName}), StackView.Immediate)
@@ -62,6 +94,8 @@ Item {
 
     function sessionFinished(portTestResult)
     {
+        endLease()
+
         if (portTestResult !== 0 && portTestResult !== -1 && streamSegueErrorDialog.text) {
             streamSegueErrorDialog.text += "\n\n" + qsTr("This PC's Internet connection is blocking Moonlight. Streaming over the Internet may not work while connected to this network.")
         }

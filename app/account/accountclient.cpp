@@ -98,28 +98,7 @@ AccountClient::AccountClient(Vault *vault, QObject *parent) :
     m_vault(vault)
 {
     m_nam = new QNetworkAccessManager(this);
-    m_nam->setStrictTransportSecurityEnabled(true);
-    // The app API never redirects. Following a legacy 302 would turn a JSON
-    // error into a 200 HTML page and hide the real failure.
-    m_nam->setRedirectPolicy(QNetworkRequest::ManualRedirectPolicy);
-    // setCookieJar() takes ownership; no parent to avoid a double delete.
-    m_nam->setCookieJar(new NoCookieJar(nullptr));
-
-#if QT_VERSION >= QT_VERSION_CHECK(5, 4, 0)
-    connect(m_nam, &QNetworkAccessManager::sslErrors, this,
-            [](QNetworkReply *reply, const QList<QSslError> &errors) {
-                const QSslCertificate certificate =
-                    reply->sslConfiguration().peerCertificate();
-                const QByteArray digest =
-                    certificate.digest(QCryptographicHash::Sha256);
-                if (AccountClient::isPinnedCertificate(digest)) {
-                    reply->ignoreSslErrors(errors);
-                }
-                else {
-                    qWarning() << "TLS: rejected an unpinned server certificate";
-                }
-            });
-#endif
+    configureNetworkManager(m_nam);
 
     connect(m_nam, &QNetworkAccessManager::finished, this,
             [this](QNetworkReply *reply) {
@@ -135,6 +114,40 @@ AccountClient::AccountClient(Vault *vault, QObject *parent) :
 }
 
 AccountClient::~AccountClient() = default;
+
+void AccountClient::configureNetworkManager(QNetworkAccessManager *manager)
+{
+    if (manager == nullptr) {
+        return;
+    }
+
+    manager->setStrictTransportSecurityEnabled(true);
+    // The app API never redirects. Following a legacy 302 would turn a JSON
+    // error into a 200 HTML page and hide the real failure. The same rule
+    // applies to the SSE stream and the lease PIN relay.
+    manager->setRedirectPolicy(QNetworkRequest::ManualRedirectPolicy);
+    // setCookieJar() takes ownership; no parent to avoid a double delete.
+    // The app never carries a web cookie on any transport.
+    manager->setCookieJar(new NoCookieJar(nullptr));
+
+#if QT_VERSION >= QT_VERSION_CHECK(5, 4, 0)
+    QObject::connect(manager, &QNetworkAccessManager::sslErrors, manager,
+            [](QNetworkReply *reply, const QList<QSslError> &errors) {
+                const QSslCertificate certificate =
+                    reply->sslConfiguration().peerCertificate();
+                const QByteArray digest =
+                    certificate.digest(QCryptographicHash::Sha256);
+                if (AccountClient::isPinnedCertificate(digest)) {
+                    reply->ignoreSslErrors(errors);
+                }
+                else {
+                    qWarning() << "TLS: rejected an unpinned server certificate";
+                }
+            });
+#else
+    Q_UNUSED(manager);
+#endif
+}
 
 QString AccountClient::apiBaseUrl()
 {
@@ -156,6 +169,39 @@ QString AccountClient::apiBaseUrl()
 #else
     return QStringLiteral("https://legiongames.ru/app/v1");
 #endif
+}
+
+QUrl AccountClient::apiUrl(const QString &path)
+{
+    QString suffix = path.trimmed();
+    if (!suffix.startsWith(QLatin1Char('/'))) {
+        suffix.prepend(QLatin1Char('/'));
+    }
+    return QUrl(apiBaseUrl() + suffix);
+}
+
+QUrl AccountClient::apiOriginUrl(const QString &path)
+{
+    const QUrl base(apiBaseUrl());
+    QUrl url;
+    url.setScheme(base.scheme());
+    url.setHost(base.host());
+    if (base.port() != -1) {
+        url.setPort(base.port());
+    }
+    QString suffix = path.trimmed();
+    if (!suffix.startsWith(QLatin1Char('/'))) {
+        suffix.prepend(QLatin1Char('/'));
+    }
+    url.setPath(suffix);
+    return url;
+}
+
+bool AccountClient::isTerminalAuthError(const QString &code)
+{
+    return code == QLatin1String("session_expired") ||
+           code == QLatin1String("session_revoked") ||
+           code == QLatin1String("not_authenticated");
 }
 
 bool AccountClient::isPinnedCertificate(const QByteArray &digest)
@@ -266,6 +312,9 @@ void AccountClient::setTokens(const QByteArray &accessToken, const QByteArray &r
 
 void AccountClient::clearTokens()
 {
+    // Any in-flight refresh now belongs to a previous session and must not be
+    // able to restore tokens after a sign-out.
+    ++m_tokenEpoch;
     m_accessToken.clear();
     m_refreshToken.clear();
     m_accessExpiresAt = QDateTime();
@@ -666,6 +715,23 @@ void AccountClient::handleReply(QNetworkReply *reply, const Pending &pending)
     reply->deleteLater();
 
     if (pending.isRefresh) {
+        if (pending.tokenEpoch != m_tokenEpoch ||
+                pending.refreshGeneration != m_refreshGeneration) {
+            // The tokens were cleared (sign-out) or a newer refresh replaced
+            // this one. A slow reply must not restore a dead session.
+            if (pending.refreshGeneration == m_refreshGeneration) {
+                m_refreshing = false;
+                QList<std::function<void(bool)>> waiters;
+                waiters.swap(m_refreshWaiters);
+                for (const auto &waiter : waiters) {
+                    if (waiter) {
+                        waiter(false);
+                    }
+                }
+            }
+            return;
+        }
+
         if (result.ok) {
             const QByteArray access =
                 result.json.value(QStringLiteral("access_token")).toString().toUtf8();
@@ -748,6 +814,8 @@ void AccountClient::doRefresh()
     pending.authenticated = true;
     pending.tokenKind = TokenKind::Refresh;
     pending.isRefresh = true;
+    pending.tokenEpoch = m_tokenEpoch;
+    pending.refreshGeneration = ++m_refreshGeneration;
     pending.requestId = CryptoUtil::randomUuid();
     // The refresh response is consumed here, not by a caller.
     pending.callback = nullptr;

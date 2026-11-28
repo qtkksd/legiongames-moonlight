@@ -12,15 +12,19 @@ class QNetworkAccessManager;
 class QNetworkReply;
 class QProcess;
 
-// Orchestrates the LegionGames one-time-code connect flow inside the client:
-//   1. exchange the code for a NetBird setup key + PC address
-//   2. enroll into a dedicated "legiongames" NetBird *profile* (so the user's
-//      own login/profile is never touched): netbird down, remove any stale
-//      "legiongames" profiles, add a fresh one, then up --setup-key --profile
-//   3. add the host, pair (PIN) and relay the PIN back to Django
-// On failure the same profile cleanup runs (down + remove "legiongames" +
-// restore the previously active profile).
-// All state is in memory only; nothing is persisted.
+// Orchestrates the LegionGames app-first connect flow inside the client:
+//   1. receive the one-shot connect material from the device-session owner
+//      (netbird setup key, PC overlay address, short-lived lease token)
+//   2. enroll into a dedicated, environment-specific "legiongames[-stg]"
+//      NetBird *profile* (so the user's own login/profile is never touched):
+//      netbird down, remove any stale session profiles, add a fresh one, then
+//      up --setup-key --profile
+//   3. add the host, pair (PIN), relay the PIN to Django and wait for the
+//      server-side activation.
+// On failure the same profile cleanup runs (down + remove the session profile
+// + restore the previously active profile).
+// The one-shot material itself is persisted by LegionApi (encrypted vault), not
+// here: this object only holds the in-flight copy and clears it on teardown.
 class LegionConnect : public QObject
 {
     Q_OBJECT
@@ -30,6 +34,11 @@ public:
 
     void startWithPayload(const QVariantMap& data);
     void disconnect();
+
+    // True while the connect state machine owns the NetBird profile or the
+    // pairing/PIN steps. A persisted material resume must not start a second
+    // flow on top of a live one.
+    bool isBusy() const { return m_Stage != Idle; }
 
     // Blocking teardown for application shutdown. aboutToQuit is emitted after
     // the event loop stops dispatching work, so the asynchronous cleanup used
@@ -41,6 +50,10 @@ signals:
     void progress(int percent);
     void failed(QString error);
     void succeeded();
+    // The club PC this lease is provisioned on, identified when the host
+    // appears on the overlay. Consumers must treat it as the only streamable
+    // host for the active lease.
+    void hostIdentified(QString uuid);
 
 private:
     enum Stage {

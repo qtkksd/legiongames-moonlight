@@ -7,6 +7,7 @@
 #include <QList>
 #include <QObject>
 #include <QString>
+#include <QUrl>
 
 #include <functional>
 
@@ -54,6 +55,21 @@ public:
     static QString apiBaseUrl();
     static QString clientVersion();
 
+    // Absolute URL for a path below the account API base (which already ends
+    // in /app/v1), e.g. apiUrl("/sessions/<id>/pin"). Every credential-bearing
+    // caller (account API, lease PIN relay) must resolve its URL here so a
+    // LG_API_BASE_URL test/staging override applies to all of them.
+    static QUrl apiUrl(const QString &path);
+
+    // Absolute URL on the same origin but outside the versioned API prefix.
+    // Used by the queue SSE endpoint, which is mounted at the site root.
+    static QUrl apiOriginUrl(const QString &path);
+
+    // Applies the one transport policy shared by the account API, the queue
+    // SSE stream and the lease PIN relay: no cookies, no redirects, HSTS and
+    // the same certificate pins. Callers own the manager.
+    static void configureNetworkManager(QNetworkAccessManager *manager);
+
     static QByteArray proofPayload(const QByteArray &body, const QString &method,
                                    const QString &path, qint64 iat, qint64 exp,
                                    const QByteArray &jtiBase64Url);
@@ -61,6 +77,11 @@ public:
                                  const QString &path, QString *errorCode);
     static bool isRetryableRequest(const QByteArray &method, bool networkError, int httpStatus);
     static bool isPinnedCertificate(const QByteArray &digest);
+
+    // Terminal authentication failures: the stored device key may still be
+    // valid, but the session cannot be used again without a new login
+    // ceremony. The UI must leave signed_in and offer login/recovery.
+    static bool isTerminalAuthError(const QString &code);
 
     void setDeviceKey(DeviceKey *key);
     DeviceKey *deviceKey() const { return m_deviceKey; }
@@ -103,6 +124,8 @@ private:
         bool isRefresh = false;
         bool retried = false;
         bool refreshed = false;
+        int tokenEpoch = 0;
+        int refreshGeneration = 0;
         QString requestId;
         Callback callback;
     };
@@ -134,6 +157,11 @@ private:
 
     bool m_refreshing = false;
     QList<std::function<void(bool)>> m_refreshWaiters;
+
+    // Incremented on every clearTokens(). A refresh reply that belongs to an
+    // older epoch is discarded so a logout cannot be undone by a slow refresh.
+    int m_tokenEpoch = 0;
+    int m_refreshGeneration = 0;
 
     QHash<QNetworkReply *, Pending> m_pending;
 };

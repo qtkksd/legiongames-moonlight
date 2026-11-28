@@ -44,6 +44,11 @@ class LegionApi : public QObject
     Q_PROPERTY(QString installPath READ installPath CONSTANT)
     Q_PROPERTY(QString recoveryKitPath READ recoveryKitPath NOTIFY recoveryKitPathChanged)
     Q_PROPERTY(QString netbirdStatus READ netbirdStatus NOTIFY netbirdStatusChanged)
+    // Server id of the lease the device is bound to (also the /sessions id).
+    Q_PROPERTY(QString leaseId READ leaseId NOTIFY leaseIdChanged)
+    // True while the encrypted one-shot connect material is waiting to be
+    // consumed. The material survives page changes and app restarts.
+    Q_PROPERTY(bool connectPending READ connectPending NOTIFY connectPendingChanged)
 
 public:
     explicit LegionApi(QObject *parent = nullptr);
@@ -64,6 +69,8 @@ public:
     QString installPath() const;
     QString recoveryKitPath() const;
     QString netbirdStatus() const { return m_netbirdStatus; }
+    QString leaseId() const { return m_leaseId; }
+    bool connectPending() const { return m_connectPending; }
 
     Q_INVOKABLE void initialize();
 
@@ -102,6 +109,20 @@ public:
     Q_INVOKABLE void reconnectSession(const QString &id);
     Q_INVOKABLE void connectSession(const QString &id);
 
+    // Re-emits persisted one-shot connect material (vault-backed). When
+    // expectedSessionId is non-empty the material must belong to that lease.
+    // Returns true when valid material was found and connectMaterialReady was
+    // emitted.
+    Q_INVOKABLE bool resumeConnectMaterial(const QString &expectedSessionId = QString());
+    // Drops the persisted material and the pending marker. Called when the
+    // lease changes, stops, is consumed, or the server says it is gone.
+    Q_INVOKABLE void clearConnectMaterial();
+
+    // Application shutdown hook. Emits signOutStarted (so QML can tear down
+    // the NetBird session profile) and sends a bounded lease stop before the
+    // process exits. The server watchdog remains the backstop.
+    Q_INVOKABLE void shutdownForQuit();
+
     Q_INVOKABLE void getQueue();
     Q_INVOKABLE void joinQueue(int clubId);
     Q_INVOKABLE void leaveQueue(const QString &id);
@@ -131,11 +152,20 @@ signals:
     void wordsChanged();
     void recoveryKitPathChanged();
     void netbirdStatusChanged();
+    void leaseIdChanged();
+    void connectPendingChanged();
     void wordsReady(const QString &handle, const QStringList &words);
     void consentRequired();
     void paymentReturned(const QString &publicId);
     void response(const QString &op, const QVariantMap &data);
     void failed(const QString &op, const QString &code, const QString &message);
+    // Emitted synchronously at the start of logout()/shutdownForQuit(), before
+    // tokens or the local account record are cleared. QML uses it to stop the
+    // NetBird session profile while the lease is still stoppable.
+    void signOutStarted();
+    // The persisted connect material is ready for ComputerManager. Emitted on
+    // a fresh /connect response, on resume, and after a restart.
+    void connectMaterialReady(const QString &sessionId, const QVariantMap &data);
 
     // Additive: lets the words screen require an explicit acknowledgement when
     // the recovery kit landed in a cloud-synced Documents folder.
@@ -194,7 +224,14 @@ private:
     void startQueueEvents();
     void stopQueueEvents();
 
-    static QVariantMap sessionData(const QJsonObject &json);
+    void setLeaseId(const QString &leaseId);
+    void setConnectPending(bool pending);
+    void persistConnectMaterial(const QString &sessionId, const QJsonObject &payload);
+    QJsonObject loadConnectMaterial();
+    void clearStoredConnectMaterial();
+    void finishLogout(int generation);
+
+    QVariantMap sessionData(const QJsonObject &json);
     static QVariantMap entryData(const QJsonObject &json);
     static QStringList wordsFromJson(const QJsonObject &json);
     static bool normalizeAmount(const QString &input, QString *output);
@@ -234,6 +271,13 @@ private:
     QString m_pollPublicId;
     int m_pollCount = 0;
     bool m_pollRequestInFlight = false;
+
+    QString m_leaseId;
+    bool m_connectPending = false;
+    bool m_logoutInProgress = false;
+    bool m_logoutFinalizing = false;
+    int m_logoutGeneration = 0;
+    int m_sessionMutationSeq = 0;
 
     std::function<void()> m_retry;
 };

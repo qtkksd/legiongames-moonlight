@@ -6,10 +6,10 @@ StreamLauncher::StreamLauncher(QObject *parent)
 }
 
 void StreamLauncher::startStream(Session *session, const QString &appName,
-                                 bool isResume)
+                                 bool isResume, const QString &leaseId)
 {
     if (session == nullptr) {
         return;
     }
-    emit startRequested(session, appName, isResume);
+    emit startRequested(session, appName, isResume, leaseId);
 }

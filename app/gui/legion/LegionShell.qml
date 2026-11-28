@@ -6,6 +6,8 @@ import "Api.js" as Api
 import "Notice.js" as Notice
 import "Theme.js" as Theme
 
+import ComputerManager 1.0
+
 // Root of the app-first product: startup gate, onboarding, rail shell.
 //
 // It is pushed as the initial StackView page by main.qml when the account
@@ -57,6 +59,10 @@ Item {
     readonly property bool startupSettled: appState.length > 0 &&
                                            appState !== "checking"
 
+    // Terminal authentication loss: the stored session cannot be used again.
+    // The shell shows a dedicated re-login/recovery gate instead of the app.
+    readonly property bool authExpired: appState === "session_expired"
+
     // app | onboarding | startup
     readonly property string mode: {
         if (!Api.available(api)) {
@@ -69,6 +75,8 @@ Item {
         case "consent":
         case "onboarding":
             return "onboarding"
+        case "session_expired":
+            return "startup"
         default:
             return "startup"
         }
@@ -342,7 +350,10 @@ Item {
     // on this shell root. Restore focus to the topmost screen once the push
     // has settled; only navigation and startup call this.
     function restoreFocus() {
-        if (shell.wordsVisible && wordsOverlay.item &&
+        if (shell.authExpired) {
+            authExpiredPrimary.forceActiveFocus()
+        }
+        else if (shell.wordsVisible && wordsOverlay.item &&
                 typeof wordsOverlay.item.focusFirst === "function") {
             wordsOverlay.item.focusFirst()
         }
@@ -394,7 +405,12 @@ Item {
         }
     }
 
-    onAppStateChanged: syncWords()
+    onAppStateChanged: {
+        syncWords()
+        if (authExpired) {
+            Qt.callLater(shell.restoreFocus)
+        }
+    }
     onOnboardingStepChanged: syncWords()
 
     onQueueEntryChanged: {
@@ -486,11 +502,22 @@ Item {
                 shell.sessionDirty = false
                 shell.sessionFetchedAt = Date.now()
                 shell.session = op === "session_stop" ? null : Api.sessionOf(data)
+                if (op === "session_stop") {
+                    // The lease is gone: tear down its NetBird profile. The
+                    // connect material is cleared by LegionApi for the stopped
+                    // lease only.
+                    ComputerManager.stopLegionConnect()
+                }
                 // If a read is in flight, keep its guard until the reply
                 // arrives; that reply will be discarded by the sequence
                 // check above.
                 shell.loadCatalog(false, true)
                 shell.refreshWallet(true)
+            }
+            else if (op === "session_connect") {
+                // The payload itself is handled by onConnectMaterialReady, not
+                // by this broadcast router: a page cannot consume the one-shot
+                // material even if it is the only listener left.
             }
             else if (op === "queue") {
                 if (shell.queueReadMutationSeq !== shell.queueMutationSeq) {
@@ -540,6 +567,7 @@ Item {
         }
 
         function onFailed(op, code, message) {
+            var sessionReadStale = false
             if (op === "clubs") {
                 shell.catalogLoading = false
                 shell.catalogInFlight = false
@@ -556,6 +584,9 @@ Item {
                 shell.walletDirty = false
             }
             else if (op === "session_current") {
+                // A 404 from a read that started before a start/claim/stop
+                // mutation is stale; the mutation payload is authoritative.
+                sessionReadStale = shell.sessionReadMutationSeq !== shell.sessionMutationSeq
                 shell.sessionInFlight = false
                 shell.sessionDirty = false
             }
@@ -569,7 +600,23 @@ Item {
                 shell.sessionHistoryLoading = false
                 shell.sessionHistoryError = code ? String(code) : "server_error"
             }
-            if (op === "session_current" && code === "not_found") {
+            if (op === "session_connect" && code === "connect_material_consumed") {
+                // The server will not reissue the material for this lease.
+                // Clear local state and end the paid lease instead of leaving
+                // the user with a session they cannot enter.
+                Api.clearConnectMaterial(shell.api)
+                var lostSession = shell.session
+                if (lostSession && lostSession.id !== undefined) {
+                    Api.stopSession(shell.api, String(lostSession.id))
+                }
+                if (shell.notifications) {
+                    shell.notifications.notifyError(
+                        "connect_material_consumed",
+                        qsTr("Данные подключения уже использованы. Сессия завершена."),
+                        "global")
+                }
+            }
+            if (op === "session_current" && code === "not_found" && !sessionReadStale) {
                 // No active session is a normal answer, not an error.
                 shell.session = null
                 shell.sessionFetchedAt = Date.now()
@@ -622,6 +669,19 @@ Item {
             shell.wordsVisible = shell.wordsList.length > 0
         }
 
+        function onConnectMaterialReady(sessionId, data) {
+            // Persistent owner of the one-shot connect command: the issuing
+            // page may already be gone, but the shell lives for the whole app.
+            if (!data) {
+                return
+            }
+            if (ComputerManager.legionConnectBusy()) {
+                // The live flow already holds this material.
+                return
+            }
+            ComputerManager.startLegionConnectWithData(data)
+        }
+
         function onRecoveryKitWritten(path, syncedFolder) {
             shell.kitPath = path ? String(path) : ""
             shell.kitInSyncedFolder = syncedFolder === true
@@ -639,11 +699,41 @@ Item {
             shell.navigate("qrc:/gui/legion/PaymentView.qml", { publicId: String(publicId) })
         }
 
+        function onSignOutStarted() {
+            // LegionApi stops the lease it tracks. If the app has a newer
+            // session snapshot than the backend (for example immediately after
+            // a restart), stop that lease too; the server stop is idempotent.
+            if (shell.api && shell.api.leaseId) {
+                return
+            }
+            if (shell.session && shell.session.id !== undefined) {
+                Api.stopSession(shell.api, String(shell.session.id))
+            }
+        }
+
         function onStateChanged() {
             if (shell.appState === "signed_in") {
                 shell.reconsentVisible = false
                 shell.recoveryVisible = false
             }
+            else if (shell.appState === "session_expired") {
+                // Terminal auth loss: the lease cannot be stopped with an
+                // invalid token, but the local NetBird profile must go.
+                ComputerManager.stopLegionConnect()
+            }
+        }
+    }
+
+    Connections {
+        target: ComputerManager
+        ignoreUnknownSignals: true
+
+        function onLegionConnectSucceeded() {
+            // The material has been consumed by the server and applied by the
+            // client; nothing to resume.
+            Api.clearConnectMaterial(shell.api)
+            shell.refreshSession(true)
+            shell.refreshWallet(true)
         }
     }
 
@@ -741,12 +831,105 @@ Item {
     Loader {
         id: startupLoader
         anchors.fill: parent
-        active: shell.mode === "startup"
+        active: shell.mode === "startup" && !shell.authExpired
         visible: active
         source: "qrc:/gui/legion/StartupGateView.qml"
         onLoaded: {
             item.shell = shell
             item.activate()
+        }
+    }
+
+    // ---- terminal auth loss ---------------------------------------------
+    // The stored session expired or was revoked. The device key is still in
+    // the vault, so login is a ceremony without a password; recovery is the
+    // fallback when the device or key is gone. The app UI stays closed.
+    Item {
+        id: authExpiredGate
+        anchors.fill: parent
+        visible: shell.authExpired
+        z: 44
+
+        Rectangle {
+            anchors.fill: parent
+            color: Theme.bg
+        }
+
+        NeonFrame {
+            width: Math.min(parent.width - Theme.spaceXxl * 2, 720)
+            height: Math.min(authExpiredColumn.implicitHeight + Theme.spaceXxl * 2,
+                             parent.height - Theme.spaceXxl * 2)
+            anchors.centerIn: parent
+            highlighted: true
+            flicker: true
+
+            ColumnLayout {
+                id: authExpiredColumn
+                anchors.fill: parent
+                anchors.margins: Theme.spaceXxl
+                spacing: Theme.spaceL
+
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("LegionGames")
+                    color: Theme.accent
+                    font.pointSize: Theme.fontSubtitle
+                    font.bold: true
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Сессия истекла")
+                    color: Theme.text
+                    font.pointSize: Theme.fontHero
+                    font.bold: true
+                    wrapMode: Text.Wrap
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Войдите снова на этом ПК. Ключ устройства сохранён, пароль не нужен. " +
+                               "Если устройство потеряно, восстановите доступ по восьми словам.")
+                    color: Theme.textMuted
+                    font.pointSize: Theme.fontBody
+                    wrapMode: Text.Wrap
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: shell.lastError.length > 0
+                    text: Api.errorText(shell.lastErrorCode, shell.lastError)
+                    color: Theme.warning
+                    font.pointSize: Theme.fontSmall
+                    wrapMode: Text.Wrap
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spaceM
+
+                    Item { Layout.fillWidth: true }
+
+                    LegionButton {
+                        kind: "secondary"
+                        text: qsTr("Восстановить доступ")
+                        onClicked: shell.recoveryVisible = true
+                    }
+
+                    LegionButton {
+                        kind: "ghost"
+                        text: qsTr("Выйти")
+                        onClicked: Api.logout(shell.api)
+                    }
+
+                    LegionButton {
+                        id: authExpiredPrimary
+                        kind: "primary"
+                        text: qsTr("Войти снова")
+                        onClicked: Api.login(shell.api)
+                    }
+                }
+            }
         }
     }
 

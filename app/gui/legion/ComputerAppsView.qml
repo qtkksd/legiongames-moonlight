@@ -18,24 +18,79 @@ LegionView {
     property int computerIndex: -1
     property string computerName: ""
     property string computerUuid: ""
+    property string leaseId: ""
+    // Q_INVOKABLE getters are not reactive; the lease change signal bumps this.
+    property int leaseContextRevision: 0
 
     readonly property bool ready: appModel !== null
+    readonly property var session: shell ? shell.session : null
+    readonly property bool leaseValid: {
+        // Explicit reads so the binding depends on every input, not on how the
+        // engine tracks calls into appLeaseValid().
+        var current = session
+        var currentLease = leaseId
+        var currentUuid = computerUuid
+        var revision = leaseContextRevision
+        return appLeaseValid()
+    }
+
+    // A stream may start only for the active lease, on the machine bound to
+    // it. The server enforces the same rule; this guard keeps the UI from
+    // offering a launch that would bypass billing.
+    function appLeaseValid() {
+        // dependency on manager changes
+        var revision = leaseContextRevision
+        if (leaseId.length === 0 || !session) {
+            return false
+        }
+        if (String(session.id || "") !== leaseId) {
+            return false
+        }
+        if (String(session.status || "") !== "active") {
+            return false
+        }
+        var hostUuid = ""
+        try {
+            hostUuid = ComputerManager.legionLeaseHostUuid
+                       ? String(ComputerManager.legionLeaseHostUuid()) : ""
+        }
+        catch (error) {
+            hostUuid = ""
+        }
+        if (hostUuid.length > 0 && computerUuid.length > 0 &&
+                hostUuid !== computerUuid) {
+            return false
+        }
+        return true
+    }
 
     function activate() {
         clearError()
-        if (appModel !== null) {
-            return
-        }
 
-        computerIndex = params && params.computerIndex !== undefined
+        var nextIndex = params && params.computerIndex !== undefined
                         ? Number(params.computerIndex) : -1
-        computerName = params && params.computerName
+        var nextName = params && params.computerName
                        ? String(params.computerName) : qsTr("Компьютер")
-        computerUuid = params && params.computerUuid
+        var nextUuid = params && params.computerUuid
                        ? String(params.computerUuid) : ""
+        var nextLease = params && params.leaseId !== undefined
+                        ? String(params.leaseId) : ""
+
+        var changed = nextIndex !== computerIndex ||
+                      nextLease !== leaseId ||
+                      nextUuid !== computerUuid
+
+        computerIndex = nextIndex
+        computerName = nextName
+        computerUuid = nextUuid
+        leaseId = nextLease
 
         if (computerIndex < 0) {
             showError("computer_not_selected", qsTr("Компьютер не выбран."), "apps")
+            return
+        }
+
+        if (appModel !== null && !changed) {
             return
         }
 
@@ -58,6 +113,12 @@ LegionView {
         if (!appModel) {
             return
         }
+        if (!appLeaseValid()) {
+            showError("lease_required",
+                      qsTr("Запуск доступен только на ПК активной сессии клуба."),
+                      "apps")
+            return
+        }
         var runningId = appModel.getRunningAppId()
         if (runningId !== 0 && !running) {
             showError("app_already_running",
@@ -78,7 +139,7 @@ LegionView {
             return
         }
 
-        streamLauncher.startStream(session, name, running === true)
+        streamLauncher.startStream(session, name, running === true, leaseId)
     }
 
     PageHeader {
@@ -120,6 +181,16 @@ LegionView {
                 visible: apps.hasInlineError
                 tone: apps.errorTone
                 text: apps.errorText
+                canRetry: false
+            }
+
+            ErrorBanner {
+                width: parent.width
+                visible: !apps.leaseValid
+                tone: "warning"
+                text: qsTr("Запуск недоступен")
+                detail: qsTr("Этот ПК не входит в активную сессию клуба. " +
+                             "Начните сессию и подключитесь к её компьютеру.")
                 canRetry: false
             }
 
@@ -170,6 +241,15 @@ LegionView {
 
         function onComputerLost() {
             apps.goSection("computers")
+        }
+    }
+
+    Connections {
+        target: ComputerManager
+        ignoreUnknownSignals: true
+
+        function onLegionLeaseContextChanged() {
+            apps.leaseContextRevision += 1
         }
     }
 }

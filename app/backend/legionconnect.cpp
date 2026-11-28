@@ -3,6 +3,7 @@
 #include "nvcomputer.h"
 #include "nvaddress.h"
 #include "sessiondeadline.h"
+#include "../account/accountclient.h"
 
 #include <QTimer>
 #include <QProcess>
@@ -21,16 +22,17 @@
 #include <QUrl>
 #include <QtDebug>
 
-#ifdef LG_STAGING_BUILD
-#define LEGION_API_BASE "https://django-stg.legiongames.cell"
-#else
-#define LEGION_API_BASE "https://legiongames.ru"
-#endif
 #define LEGION_DEFAULT_MANAGEMENT_URL "https://netbird.legiongames.ru"
 
 // Dedicated NetBird profile used for the session so the user's own NetBird
-// login (the "default" profile) is never modified.
+// login (the "default" profile) is never modified. The name is environment
+// specific: a staging install and a production install can coexist on one
+// machine without removing each other's profile.
+#ifdef LG_STAGING_BUILD
+#define LEGION_PROFILE_NAME "legiongames-stg"
+#else
 #define LEGION_PROFILE_NAME "legiongames"
+#endif
 
 LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
     QObject(parent),
@@ -51,7 +53,9 @@ LegionConnect::LegionConnect(ComputerManager* manager, QObject* parent) :
 {
     // The connect and PIN APIs never redirect. Following a redirect here could
     // disclose the one-time bearer token or send the code to another host.
-    m_Nam->setRedirectPolicy(QNetworkRequest::ManualRedirectPolicy);
+    // Reuse the account transport policy (pinning, HSTS, no cookies) so the
+    // relay is exactly as strong as the API that issued the token.
+    AccountClient::configureNetworkManager(m_Nam);
 
     connect(m_Process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
@@ -187,7 +191,12 @@ void LegionConnect::startWithPayload(const QVariantMap& data)
     m_StaleProfileIds.clear();
     m_StaleProfileActive = false;
     m_RemoveIndex = 0;
-    m_PinReply = nullptr;
+    if (m_PinReply != nullptr) {
+        m_PinReply->disconnect(this);
+        m_PinReply->abort();
+        m_PinReply->deleteLater();
+        m_PinReply = nullptr;
+    }
     m_Stage = Preparing;
 
     applyConnectPayload(QJsonObject::fromVariantMap(data));
@@ -299,7 +308,14 @@ void LegionConnect::applyConnectPayload(const QJsonObject& obj)
     m_Token = obj.value(QStringLiteral("token")).toString();
     m_ManagementUrl = obj.value(QStringLiteral("management_url")).toString();
     if (m_ManagementUrl.isEmpty()) {
+#ifdef LG_STAGING_BUILD
+        // A staging build must never enroll into the production NetBird
+        // management plane by falling back to a compiled default.
+        fail(tr("Сервер не вернул адрес NetBird для тестового окружения"));
+        return;
+#else
         m_ManagementUrl = QStringLiteral(LEGION_DEFAULT_MANAGEMENT_URL);
+#endif
     }
     const QUrl managementUrl(m_ManagementUrl, QUrl::StrictMode);
     const QString managementHost = managementUrl.host().toLower();
@@ -538,6 +554,12 @@ void LegionConnect::startPairing(NvComputer* computer)
     m_PinDone = false;
     m_PinOk = false;
 
+    // The pairing target is the leased club PC. Publish its stable identity so
+    // the product UI can keep every other discovered host inventory-only.
+    if (computer != nullptr && !computer->uuid.isEmpty()) {
+        emit hostIdentified(computer->uuid);
+    }
+
     m_PinAttempts = 0;
     emit status(tr("Сопряжение с ПК..."));
     emit progress(85);
@@ -561,11 +583,13 @@ void LegionConnect::submitPin()
     QJsonObject body;
     body[QStringLiteral("pin")] = m_Pin;
 
-    QNetworkRequest request{QUrl(
-        QStringLiteral(LEGION_API_BASE "/app/v1/sessions/") + m_SessionId +
-        QStringLiteral("/pin"))};
+    QNetworkRequest request{AccountClient::apiUrl(
+        QStringLiteral("/sessions/") + m_SessionId + QStringLiteral("/pin"))};
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    request.setRawHeader("User-Agent", "LegionGames-Moonlight");
+    request.setRawHeader("User-Agent",
+                         QByteArray("LegionGames-Moonlight/") +
+                             AccountClient::clientVersion().toUtf8());
+    request.setRawHeader("X-Client-Version", AccountClient::clientVersion().toUtf8());
     request.setRawHeader("Authorization", QByteArrayLiteral("Bearer ") + m_Token.toUtf8());
 
     QNetworkReply* reply = m_Nam->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
@@ -684,6 +708,14 @@ void LegionConnect::fail(const QString& error)
 
     const bool touched = m_NetbirdTouched;
     m_Stage = Idle;
+    if (m_PinReply != nullptr) {
+        // A late PIN reply must not restart the retry timer after the flow has
+        // already failed and torn the profile down.
+        m_PinReply->disconnect(this);
+        m_PinReply->abort();
+        m_PinReply->deleteLater();
+        m_PinReply = nullptr;
+    }
     if (m_Process != nullptr && m_Process->state() != QProcess::NotRunning) {
         m_Process->kill();
         m_Process->waitForFinished(1000);

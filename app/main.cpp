@@ -1093,6 +1093,12 @@ int main(int argc, char *argv[])
     if (hasGUI) {
         legionApi.initialize();
 
+        // Quit hook: flush a bounded lease stop and let QML tear the NetBird
+        // session profile down. Connected before the QML singleton is created,
+        // so it runs before ComputerManager::handleAboutToQuit().
+        QObject::connect(&app, &QCoreApplication::aboutToQuit, &legionApi,
+                         &LegionApi::shutdownForQuit);
+
         // Listen for forwarded payment deep links. Owning this socket does not
         // make normal launches single-instance.
         QObject::connect(&deepLink, &DeepLink::paymentUrlReceived, &legionApi,

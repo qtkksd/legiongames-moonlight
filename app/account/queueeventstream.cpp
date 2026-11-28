@@ -14,6 +14,11 @@ QueueEventStream::QueueEventStream(QObject *parent)
       m_nam(new QNetworkAccessManager(this)),
       m_reconnectTimer(new QTimer(this))
 {
+    // Same transport policy as the account client: no cookies, no redirects,
+    // HSTS and the shared certificate pins. The SSE request carries a Bearer
+    // access token, so it must never be weaker than the API transport.
+    AccountClient::configureNetworkManager(m_nam);
+
     m_reconnectTimer->setSingleShot(true);
     connect(m_reconnectTimer, &QTimer::timeout, this, [this]() {
         if (!m_stopping) {
@@ -51,8 +56,7 @@ void QueueEventStream::openConnection()
         return;
     }
 
-    QUrl url(AccountClient::apiBaseUrl());
-    url.setPath(QStringLiteral("/queue/sse/"));
+    QUrl url = AccountClient::apiOriginUrl(QStringLiteral("/queue/sse/"));
     QNetworkRequest request(url);
     request.setRawHeader("Accept", "text/event-stream");
     request.setRawHeader("Cache-Control", "no-cache");
@@ -60,6 +64,7 @@ void QueueEventStream::openConnection()
     if (!m_lastEventId.isEmpty()) {
         request.setRawHeader("Last-Event-ID", m_lastEventId);
     }
+    request.setRawHeader("X-Client-Version", AccountClient::clientVersion().toUtf8());
     request.setRawHeader("User-Agent", "LegionGames-Moonlight-SSE");
 
     m_buffer.clear();

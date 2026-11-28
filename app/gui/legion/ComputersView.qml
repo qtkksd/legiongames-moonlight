@@ -21,12 +21,44 @@ LegionView {
     property int pairingIndex: -1
     property string pairingName: ""
     property bool openAppsAfterPair: false
+    // Q_INVOKABLE getters are not reactive; the manager's change signal bumps
+    // this so the lease guard re-evaluates.
+    property int leaseContextRevision: 0
 
     readonly property var session: shell ? shell.session : null
     readonly property bool sessionLive: session !== null &&
                                         (session.status === "pending" ||
                                          session.status === "active")
-    readonly property string activeAddress: {
+    // Only an activated lease has a streamable host. A pending lease is still
+    // being provisioned and must not open the app list.
+    readonly property bool leaseActive: session !== null && session.status === "active"
+    readonly property string leaseId: sessionLive && session
+                                      ? String(session.id || "") : ""
+    readonly property string leaseHostUuid: {
+        // touch the revision so the binding re-evaluates on manager changes
+        var revision = leaseContextRevision
+        try {
+            return ComputerManager.legionLeaseHostUuid
+                   ? String(ComputerManager.legionLeaseHostUuid()) : ""
+        }
+        catch (error) {
+            return ""
+        }
+    }
+    readonly property string leaseAddress: {
+        // The connected host address is known from the connect material even
+        // when the host uuid has not been observed yet (crash mid-connect).
+        var revision = leaseContextRevision
+        try {
+            if (ComputerManager.legionLeaseHostAddress) {
+                var stored = String(ComputerManager.legionLeaseHostAddress())
+                if (stored.length > 0) {
+                    return stored
+                }
+            }
+        }
+        catch (error) {
+        }
         if (!sessionLive || !session || !session.pc) {
             return ""
         }
@@ -45,6 +77,38 @@ LegionView {
             return String(session.pc.ip)
         }
         return qsTr("Компьютер готовится")
+    }
+
+    // Strip the GameStream port from a model address. IPv6 literals are kept
+    // as-is; the club hosts are IPv4 on the NetBird overlay.
+    function hostOnly(address) {
+        var text = address ? String(address) : ""
+        if (text.length === 0 || text.charAt(0) === "[") {
+            return text
+        }
+        if (text.indexOf(":") === text.lastIndexOf(":") && text.indexOf(":") > 0) {
+            return text.substring(0, text.indexOf(":"))
+        }
+        return text
+    }
+
+    // A discovered host is streamable only when it is the machine of the
+    // active lease. The stable uuid is the primary key; the overlay address is
+    // the fallback when the persisted binding is missing (for example a fresh
+    // profile after an app update).
+    function isLeaseHost(model, uuid) {
+        if (!sessionLive || !leaseActive) {
+            return false
+        }
+        var hostUuid = uuid ? String(uuid) : ""
+        if (leaseHostUuid.length > 0 && hostUuid.length > 0) {
+            return hostUuid === leaseHostUuid
+        }
+        if (leaseAddress.length > 0) {
+            var address = model && model.address ? String(model.address) : ""
+            return hostOnly(address) === leaseAddress
+        }
+        return false
     }
 
     function createModel() {
@@ -80,7 +144,8 @@ LegionView {
         go("qrc:/gui/legion/ComputerAppsView.qml", {
                computerIndex: index,
                computerName: name,
-               computerUuid: uuid
+               computerUuid: uuid,
+               leaseId: computers.leaseId
            })
     }
 
@@ -100,8 +165,25 @@ LegionView {
         if (!card) {
             return
         }
-        if (card.currentSession) {
+        if (!sessionLive) {
+            // No lease means no streaming. Discovered hosts stay inventory-only
+            // so a reachable club PC can never bypass the session/billing flow.
+            showError("lease_required",
+                      qsTr("Запуск доступен только в активной сессии клуба. Начните сессию."),
+                      "computer")
+            return
+        }
+        if (!leaseActive) {
+            showError("lease_pending",
+                      qsTr("Компьютер ещё готовится. Дождитесь подключения."),
+                      "computer")
             go("qrc:/gui/legion/SessionView.qml", {})
+            return
+        }
+        if (!card.currentSession) {
+            showError("lease_required",
+                      qsTr("Этот ПК не входит в вашу сессию. Запуск доступен только на ПК сессии."),
+                      "computer")
             return
         }
         if (card.statusUnknown) {
@@ -122,6 +204,8 @@ LegionView {
             return
         }
         if (!card.paired) {
+            // Pairing is the fallback for the leased PC only. It is never a
+            // route to a stream on some other discovered host.
             startPairing(index, card.computerName)
             return
         }
@@ -138,7 +222,7 @@ LegionView {
             var name = pairingName
             var openAfter = openAppsAfterPair
             pairDialog.close()
-            if (openAfter && index >= 0) {
+            if (openAfter && index >= 0 && sessionLive && leaseActive) {
                 openAppsAfterPair = false
                 openApps(index, name, "")
             }
@@ -312,8 +396,8 @@ LegionView {
 
                     Label {
                         Layout.fillWidth: true
-                        text: qsTr("Список обновляется автоматически. Запуск игры по-прежнему " +
-                                   "идёт через сессию клуба.")
+                        text: qsTr("Запуск игры доступен только на ПК активной сессии клуба. " +
+                                   "Остальные найденные ПК — только для справки.")
                         color: Theme.textMuted
                         font.pointSize: Theme.fontSmall
                         wrapMode: Text.Wrap
@@ -339,8 +423,13 @@ LegionView {
                                 wakeable: model.wakeable === true
                                 statusUnknown: model.statusUnknown === true
                                 legion: model.legion === true
-                                currentSession: computers.activeAddress.length > 0 &&
-                                                String(model.address) === computers.activeAddress
+                                currentSession: {
+                                    // Re-evaluate on every lease-context change.
+                                    var revision = computers.leaseContextRevision
+                                    return computers.isLeaseHost(
+                                                model,
+                                                model.uuid ? String(model.uuid) : "")
+                                }
                                 onActivated: computers.activateComputer(index, pcCard)
                                 onOpenSession: computers.go(
                                                    "qrc:/gui/legion/SessionView.qml", {})
@@ -395,6 +484,15 @@ LegionView {
 
         function onPairingCompleted(error) {
             computers.finishPairing(error)
+        }
+    }
+
+    Connections {
+        target: ComputerManager
+        ignoreUnknownSignals: true
+
+        function onLegionLeaseContextChanged() {
+            computers.leaseContextRevision += 1
         }
     }
 }

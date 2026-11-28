@@ -30,6 +30,7 @@ LegionView {
     readonly property bool pending: status === "pending"
     readonly property bool disconnected: status === "disconnected"
     readonly property bool finished: status === "expired" || status === "stopped"
+    readonly property bool connectPending: api ? (api.connectPending === true) : false
     readonly property string clubName: session && shell ? shell.clubName(session.club_id) : qsTr("Клуб")
     readonly property var walletRow: session && shell ? shell.walletFor(session.club_id) : null
     readonly property string pcLabel: {
@@ -56,6 +57,24 @@ LegionView {
             shell.refreshWallet()
         }
         syncSession()
+
+        // The one-shot material may have arrived while another page was open,
+        // or the app restarted mid-connect. The shell is the persistent owner;
+        // resuming only re-emits it there.
+        if (!connecting && ComputerManager.legionConnectBusy()) {
+            // The flow survived the page change; show its progress again.
+            connecting = true
+            connectStage = qsTr("Подключаемся…")
+        }
+        else if (!connecting && connectPending) {
+            connecting = true
+            connectProgress = 0
+            connectStage = qsTr("Продолжаем подключение…")
+            if (!Api.resumeConnectMaterial(api, sessionView.session ? sessionView.session.id : "")) {
+                connecting = false
+                connectStage = ""
+            }
+        }
     }
 
     function focusFirst() {
@@ -85,6 +104,19 @@ LegionView {
         }
         connectError = ""
         connectProgress = 0
+
+        // Prefer the vault-backed material over a second /connect: the server
+        // issues it once per lease, and a re-request returns
+        // connect_material_consumed and kills the session.
+        if (connectPending && !ComputerManager.legionConnectBusy()) {
+            connectStage = qsTr("Продолжаем подключение…")
+            if (Api.resumeConnectMaterial(api, session.id)) {
+                connecting = true
+                return
+            }
+            connectProgress = 0
+        }
+
         connectStage = qsTr("Получаем данные подключения…")
         connecting = true
         if (!Api.connectSession(api, session.id)) {
@@ -135,11 +167,17 @@ LegionView {
                 }
             }
             else if (op === "session_connect") {
+                // LegionShell owns the connect command and forwards the
+                // material to ComputerManager. This page only renders it.
+                sessionView.connecting = true
                 sessionView.connectStage = qsTr("Подключаем NetBird…")
-                ComputerManager.startLegionConnectWithData(data)
             }
             else if (op === "session_reconnect") {
                 sessionView.connectError = ""
+                // Reconnect issues a fresh server-side cycle; the one-shot
+                // material must be requested again (the old one is consumed or
+                // stale).
+                sessionView.connectNow()
             }
         }
 
@@ -154,17 +192,9 @@ LegionView {
             else if (op === "session_connect") {
                 sessionView.connecting = false
                 sessionView.connectStage = ""
-                if (code === "connect_material_consumed" && sessionView.session) {
-                    // The one-shot material was lost or reused. The server will
-                    // not issue a second key, so tear the lease down and make
-                    // the user start a fresh session.
-                    sessionView.connectError =
-                        qsTr("Данные подключения уже выданы. Сессия остановлена — начните заново.")
-                    Api.stopSession(api, sessionView.session.id)
-                }
-                else {
-                    sessionView.showError(code, message, op)
-                }
+                // connect_material_consumed is handled by LegionShell: it
+                // clears the material and ends the unusable lease.
+                sessionView.showError(code, message, op)
             }
             else if (op === "session_reconnect" || op === "session_current") {
                 sessionView.showError(code, message, op)
@@ -192,11 +222,18 @@ LegionView {
             sessionView.connecting = false
             sessionView.connectProgress = 100
             sessionView.connectStage = qsTr("Подключено")
-            if (sessionView.shell && sessionView.shell.notifications) {
-                sessionView.shell.notifications.notifySuccess(
-                    qsTr("Подключено"),
-                    qsTr("Компьютер готов к игре."),
-                    "")
+            if (sessionView.shell) {
+                // The PIN relay activated the lease server-side; refresh so the
+                // app list can see status=active and the lease host before
+                // the user picks a game.
+                sessionView.shell.refreshSession(true)
+                sessionView.shell.refreshWallet(true)
+                if (sessionView.shell.notifications) {
+                    sessionView.shell.notifications.notifySuccess(
+                        qsTr("Подключено"),
+                        qsTr("Компьютер готов к игре."),
+                        "")
+                }
             }
             sessionView.openComputerList()
         }
@@ -410,7 +447,8 @@ LegionView {
 
                         Label {
                             Layout.fillWidth: true
-                            text: qsTr("Прогресс подключения NetBird и Sunshine. Окно стрима откроется автоматически.")
+                            text: qsTr("Подключение NetBird и Sunshine. После подключения откроется " +
+                                       "список игр клуба.")
                             color: Theme.textMuted
                             font.pointSize: Theme.fontSmall
                             wrapMode: Text.Wrap
@@ -476,9 +514,27 @@ LegionView {
                         LegionButton {
                             kind: "secondary"
                             visible: sessionView.disconnected
+                            enabled: !sessionView.connecting
                             text: qsTr("Повторить")
                             onClicked: {
                                 Api.reconnectSession(sessionView.api, sessionView.session.id)
+                            }
+                        }
+
+                        LegionButton {
+                            kind: "secondary"
+                            visible: sessionView.connectPending && !sessionView.connecting
+                            text: qsTr("Продолжить подключение")
+                            onClicked: {
+                                if (ComputerManager.legionConnectBusy()) {
+                                    return
+                                }
+                                if (Api.resumeConnectMaterial(sessionView.api,
+                                                              sessionView.session.id)) {
+                                    sessionView.connecting = true
+                                    sessionView.connectProgress = 0
+                                    sessionView.connectStage = qsTr("Продолжаем подключение…")
+                                }
                             }
                         }
 

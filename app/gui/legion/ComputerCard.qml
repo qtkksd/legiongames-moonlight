@@ -4,9 +4,10 @@ import QtQuick.Layouts 1.3
 
 import "Theme.js" as Theme
 
-// One computer row on the product "Компьютеры" page. It deliberately does
-// not expose Moonlight's AppView: streaming must go through the club session
-// and billing flow. Only the active session has an "open session" action.
+// One computer row on the product "Компьютеры" page. Only the machine of the
+// active club lease is streamable; every other discovered host is
+// inventory-only, so a reachable PC can never bypass the session/billing flow.
+// The page enforces this in activateComputer(); the card only renders it.
 Rectangle {
     id: card
 

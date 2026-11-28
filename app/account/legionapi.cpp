@@ -12,12 +12,14 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QEventLoop>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QJsonValue>
 #include <QProcess>
+#include <QPointer>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QSysInfo>
@@ -31,6 +33,12 @@ const char kAccountVaultKey[] = "account";
 const char kWordsVaultKey[] = "recovery.words";
 const char kConsentVaultKey[] = "consent";
 const char kPendingIntentVaultKey[] = "payment.pending";
+// Encrypted one-shot /sessions/{id}/connect payload. The setup key and lease
+// token are secrets, so they never go to QSettings or a plain file.
+const char kConnectVaultKey[] = "session.connect";
+// The lease PIN token lives for 10 minutes server-side. Persisting the material
+// beyond that cannot succeed and must not keep a stale secret around.
+const int kConnectMaterialMaxAgeSeconds = 600;
 
 QString findNetbirdExecutable()
 {
@@ -150,17 +158,58 @@ void LegionApi::initialize()
     qInfo() << "Account: vault backend" << m_vault->backendName();
 
     connect(m_client, &AccountClient::authenticationLost, this, [this](const QString &code) {
+        if (m_logoutInProgress) {
+            // finishLogout() owns the terminal state during sign-out; a late
+            // auth failure from the revocation request must not re-open the
+            // account gate.
+            return;
+        }
         if (code == QLatin1String("device_revoked") ||
             code == QLatin1String("device_stale")) {
+            // A revoked device can no longer own a lease or hold material.
+            setLeaseId(QString());
+            clearStoredConnectMaterial();
             setState(QStringLiteral("revoked"));
         }
         else if (code == QLatin1String("unknown_device")) {
             if (m_vault != nullptr) {
                 m_vault->remove(QString::fromLatin1(kAccountVaultKey));
             }
+            setLeaseId(QString());
+            clearStoredConnectMaterial();
             setHandle(QString());
             setOnboardingStep(QString());
             setState(QStringLiteral("no_account"));
+        }
+        else if (AccountClient::isTerminalAuthError(code)) {
+            // Terminal authentication loss (expired/revoked session, missing
+            // authentication). The tokens are already gone; the device key is
+            // kept so the user can log in again or recover. Never stay in
+            // signed_in without tokens. Without a known account (a late reply
+            // after sign-out) this is simply "no account".
+            setLeaseId(QString());
+            clearStoredConnectMaterial();
+            setBusy(false);
+            setState(m_handle.isEmpty() ? QStringLiteral("no_account")
+                                        : QStringLiteral("session_expired"));
+        }
+        else {
+            // Any other refresh failure also left the client without tokens.
+            // A transport failure is shown as offline; everything else is a
+            // dead session and must not keep the app in signed_in.
+            setLeaseId(QString());
+            clearStoredConnectMaterial();
+            setBusy(false);
+            if (m_handle.isEmpty()) {
+                setState(QStringLiteral("no_account"));
+            }
+            else if (code == QLatin1String("network_error") ||
+                     code == QLatin1String("timeout")) {
+                setState(QStringLiteral("offline"));
+            }
+            else {
+                setState(QStringLiteral("session_expired"));
+            }
         }
     });
 
@@ -178,6 +227,10 @@ void LegionApi::initialize()
 
     loadAccountRecord();
     m_pendingPaymentId = loadStoredPendingIntent();
+    // Recover the one-shot connect material from a previous run, if it is
+    // still inside the lease token TTL. loadConnectMaterial() clears expired or
+    // malformed records and updates connectPending.
+    loadConnectMaterial();
 
     QString errorCode;
     m_deviceKey = DeviceKey::load(m_vault, &errorCode);
@@ -350,6 +403,129 @@ void LegionApi::stopQueueEvents()
     }
 }
 
+void LegionApi::setLeaseId(const QString &leaseId)
+{
+    const QString normalized = leaseId.trimmed();
+    if (m_leaseId == normalized) {
+        return;
+    }
+    m_leaseId = normalized;
+    emit leaseIdChanged();
+}
+
+void LegionApi::setConnectPending(bool pending)
+{
+    if (m_connectPending == pending) {
+        return;
+    }
+    m_connectPending = pending;
+    emit connectPendingChanged();
+}
+
+void LegionApi::persistConnectMaterial(const QString &sessionId, const QJsonObject &payload)
+{
+    if (sessionId.isEmpty() || payload.isEmpty() ||
+            m_vault == nullptr || !m_vault->isAvailable()) {
+        setConnectPending(false);
+        return;
+    }
+
+    QJsonObject record;
+    record.insert(QStringLiteral("v"), 1);
+    record.insert(QStringLiteral("session_id"), sessionId);
+    record.insert(QStringLiteral("issued_at"),
+                  QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    record.insert(QStringLiteral("payload"), payload);
+
+    if (!m_vault->save(QString::fromLatin1(kConnectVaultKey),
+                       QJsonDocument(record).toJson(QJsonDocument::Compact))) {
+        // Without a vault the in-flight connect still works, but a page change
+        // or restart loses the one-shot material. Surface it instead of
+        // pretending it is durable.
+        qWarning() << "Account: cannot persist connect material"
+                   << m_vault->lastErrorCode();
+        setConnectPending(false);
+        return;
+    }
+    setConnectPending(true);
+}
+
+QJsonObject LegionApi::loadConnectMaterial()
+{
+    if (m_vault == nullptr || !m_vault->isAvailable()) {
+        setConnectPending(false);
+        return QJsonObject();
+    }
+
+    bool ok = false;
+    const QByteArray blob = m_vault->load(QString::fromLatin1(kConnectVaultKey), &ok);
+    if (!ok || blob.isEmpty()) {
+        setConnectPending(false);
+        return QJsonObject();
+    }
+
+    const QJsonObject record = QJsonDocument::fromJson(blob).object();
+    const QJsonObject payload = record.value(QStringLiteral("payload")).toObject();
+    const QString sessionId =
+        record.value(QStringLiteral("session_id")).toString().trimmed();
+    const QDateTime issuedAt = QDateTime::fromString(
+        record.value(QStringLiteral("issued_at")).toString(), Qt::ISODate);
+
+    const bool fresh = issuedAt.isValid() &&
+        issuedAt.secsTo(QDateTime::currentDateTimeUtc()) <= kConnectMaterialMaxAgeSeconds;
+
+    if (sessionId.isEmpty() || payload.isEmpty() || !fresh) {
+        // Expired, malformed or written by another schema version: drop it so
+        // a stale setup key/token never lingers in the vault.
+        clearStoredConnectMaterial();
+        return QJsonObject();
+    }
+
+    setConnectPending(true);
+    return record;
+}
+
+void LegionApi::clearStoredConnectMaterial()
+{
+    if (m_vault != nullptr && m_vault->isAvailable()) {
+        m_vault->remove(QString::fromLatin1(kConnectVaultKey));
+    }
+    setConnectPending(false);
+}
+
+bool LegionApi::resumeConnectMaterial(const QString &expectedSessionId)
+{
+    if (m_logoutInProgress || m_state != QLatin1String("signed_in")) {
+        // Never hand one-shot material to the network layer outside an active
+        // account session.
+        return false;
+    }
+
+    const QJsonObject record = loadConnectMaterial();
+    const QString sessionId = record.value(QStringLiteral("session_id")).toString().trimmed();
+    const QJsonObject payload = record.value(QStringLiteral("payload")).toObject();
+    if (sessionId.isEmpty() || payload.isEmpty()) {
+        return false;
+    }
+
+    const QString expected = expectedSessionId.trimmed();
+    if (!expected.isEmpty() && expected != sessionId) {
+        // The material belongs to another lease (or a session that already
+        // ended). Never apply it to the current one.
+        clearStoredConnectMaterial();
+        return false;
+    }
+
+    setLeaseId(sessionId);
+    emit connectMaterialReady(sessionId, payload.toVariantMap());
+    return true;
+}
+
+void LegionApi::clearConnectMaterial()
+{
+    clearStoredConnectMaterial();
+}
+
 void LegionApi::clearError()
 {
     if (m_lastError.isEmpty() && m_lastErrorCode.isEmpty()) {
@@ -374,11 +550,35 @@ void LegionApi::fail(const QString &op, const QString &code, const QString &mess
 void LegionApi::failFromResult(const QString &op, const ApiResult &result,
                                std::function<void()> retry)
 {
-    if (result.errorCode == QLatin1String("device_revoked") ||
+    if (m_logoutInProgress) {
+        // A sign-out is in progress; the resulting state is no_account, not a
+        // terminal-auth or offline gate. Still report the failed operation.
+        fail(op,
+             result.errorCode.isEmpty() ? QStringLiteral("server_error") : result.errorCode,
+             result.message.isEmpty() ? QStringLiteral("Ошибка запроса. Попробуйте ещё раз.")
+                                      : result.message,
+             std::move(retry));
+        return;
+    }
+
+    if (AccountClient::isTerminalAuthError(result.errorCode)) {
+        // One reducer for terminal auth: no tokens, no lease, no material, and
+        // a dedicated state that the shell turns into a re-login/recovery gate.
+        if (m_client != nullptr) {
+            m_client->clearTokens();
+        }
+        setLeaseId(QString());
+        clearStoredConnectMaterial();
+        setState(m_handle.isEmpty() ? QStringLiteral("no_account")
+                                    : QStringLiteral("session_expired"));
+    }
+    else if (result.errorCode == QLatin1String("device_revoked") ||
         result.errorCode == QLatin1String("device_stale")) {
         if (m_client != nullptr) {
             m_client->clearTokens();
         }
+        setLeaseId(QString());
+        clearStoredConnectMaterial();
         setState(QStringLiteral("revoked"));
     }
     else if (result.errorCode == QLatin1String("consent_version_mismatch") ||
@@ -854,6 +1054,8 @@ void LegionApi::handleAuthFailure(const QString &op, const ApiResult &result, bo
         if (m_client != nullptr) {
             m_client->clearTokens();
         }
+        setLeaseId(QString());
+        clearStoredConnectMaterial();
         setState(QStringLiteral("revoked"));
         if (!silent) {
             fail(op, result.errorCode, result.message);
@@ -865,6 +1067,8 @@ void LegionApi::handleAuthFailure(const QString &op, const ApiResult &result, bo
         if (m_vault != nullptr) {
             m_vault->remove(QString::fromLatin1(kAccountVaultKey));
         }
+        setLeaseId(QString());
+        clearStoredConnectMaterial();
         setHandle(QString());
         setOnboardingStep(QString());
         setState(QStringLiteral("no_account"));
@@ -874,13 +1078,37 @@ void LegionApi::handleAuthFailure(const QString &op, const ApiResult &result, bo
         return;
     }
 
+    if (AccountClient::isTerminalAuthError(result.errorCode)) {
+        if (m_client != nullptr) {
+            m_client->clearTokens();
+        }
+        setLeaseId(QString());
+        clearStoredConnectMaterial();
+        if (m_handle.isEmpty()) {
+            setState(QStringLiteral("no_account"));
+        }
+        else {
+            setState(QStringLiteral("session_expired"));
+        }
+        if (!silent) {
+            fail(op, result.errorCode, result.message);
+        }
+        else {
+            silentFailure(result.errorCode, result.message);
+        }
+        return;
+    }
+
     if (silent) {
         silentFailure(result.errorCode, result.message);
-        if (result.errorCode == QLatin1String("not_authenticated") ||
-            result.errorCode == QLatin1String("invalid_signature") ||
+        if (result.errorCode == QLatin1String("invalid_signature") ||
             result.errorCode == QLatin1String("key_revoked") ||
             result.errorCode == QLatin1String("invalid_or_expired_challenge")) {
-            setState(QStringLiteral("no_account"));
+            // The stored device key can no longer sign a ceremony. The account
+            // may still exist, so offer login/recovery instead of pretending
+            // there is no account.
+            setState(m_handle.isEmpty() ? QStringLiteral("no_account")
+                                        : QStringLiteral("session_expired"));
         }
         return;
     }
@@ -1213,34 +1441,133 @@ void LegionApi::logout()
         return;
     }
 
-    if (m_client->hasAccessToken()) {
+    if (m_logoutInProgress) {
+        return;
+    }
+    m_logoutInProgress = true;
+    const int generation = ++m_logoutGeneration;
+
+    // F5: the session/NetBird teardown starts before any account state is
+    // cleared. The signal is synchronous; QML stops the NetBird session
+    // profile here while credentials are still valid.
+    emit signOutStarted();
+
+    const QString lease = m_leaseId.trimmed();
+    if (!lease.isEmpty() &&
+            (m_client->hasAccessToken() || m_client->hasRefreshToken())) {
+        // Bounded: logout must not hang on a dead network. The server stop
+        // endpoint is idempotent, so a timeout followed by the server watchdog
+        // is safe.
+        m_client->post(QStringLiteral("/sessions/") + lease + QStringLiteral("/stop"),
+                       QJsonObject(), true, CryptoUtil::randomUuid(),
+                       [this, generation](const ApiResult &) { finishLogout(generation); });
+        QTimer::singleShot(3000, this, [this, generation]() { finishLogout(generation); });
+        return;
+    }
+
+    finishLogout(generation);
+}
+
+void LegionApi::finishLogout(int generation)
+{
+    if (generation != m_logoutGeneration ||
+            !m_logoutInProgress || m_logoutFinalizing) {
+        return;
+    }
+    m_logoutFinalizing = true;
+
+    if (m_client == nullptr) {
+        m_logoutInProgress = false;
+        m_logoutFinalizing = false;
+        setState(QStringLiteral("no_account"));
+        return;
+    }
+
+    // Clearing the local account is the goal; server-side token revocation is
+    // best effort and must finish before the tokens are dropped (a refresh in
+    // flight would otherwise restore them after the UI signed out).
+    auto complete = [this, generation]() {
+        if (generation != m_logoutGeneration || !m_logoutFinalizing) {
+            return;
+        }
+        m_logoutFinalizing = false;
+        m_logoutInProgress = false;
+
+        m_client->clearTokens();
+
+        if (m_pollTimer != nullptr) {
+            m_pollTimer->stop();
+        }
+        m_pollPublicId.clear();
+        clearPendingIntent();
+        clearStoredConnectMaterial();
+        setLeaseId(QString());
+
+        if (m_vault != nullptr && m_vault->isAvailable()) {
+            m_vault->remove(QString::fromLatin1(kAccountVaultKey));
+            m_vault->remove(QString::fromLatin1(kWordsVaultKey));
+        }
+
+        // The device key stays: the same PC logs back in with a ceremony.
+        // Logging out is not a device revocation.
+        setHandle(QString());
+        setOnboardingStep(QString());
+        m_words.clear();
+        emit wordsChanged();
+        m_recoveryKitPath.clear();
+        emit recoveryKitPathChanged();
+        setBusy(false);
+        setState(QStringLiteral("no_account"));
+    };
+
+    if (m_client->hasAccessToken() || m_client->hasRefreshToken()) {
+        // The epoch guard in AccountClient makes this safe even when the
+        // request has to refresh first: a late refresh reply cannot restore
+        // the tokens cleared below.
         m_client->post(QStringLiteral("/auth/logout"), QJsonObject(), true,
-                       CryptoUtil::randomUuid(), [](const ApiResult &) {});
+                       CryptoUtil::randomUuid(),
+                       [complete](const ApiResult &) { complete(); });
+        QTimer::singleShot(1500, this, [complete]() { complete(); });
+        return;
     }
 
-    m_client->clearTokens();
+    complete();
+}
 
-    if (m_pollTimer != nullptr) {
-        m_pollTimer->stop();
-    }
-    m_pollPublicId.clear();
-    clearPendingIntent();
-
-    if (m_vault != nullptr && m_vault->isAvailable()) {
-        m_vault->remove(QString::fromLatin1(kAccountVaultKey));
-        m_vault->remove(QString::fromLatin1(kWordsVaultKey));
+void LegionApi::shutdownForQuit()
+{
+    if (m_client == nullptr) {
+        return;
     }
 
-    // The device key stays: the same PC logs back in with a ceremony. Logging
-    // out is not a device revocation.
-    setHandle(QString());
-    setOnboardingStep(QString());
-    m_words.clear();
-    emit wordsChanged();
-    m_recoveryKitPath.clear();
-    emit recoveryKitPathChanged();
-    setBusy(false);
-    setState(QStringLiteral("no_account"));
+    // Let QML stop the NetBird session profile while the app is still alive.
+    emit signOutStarted();
+    stopQueueEvents();
+
+    if (m_leaseId.isEmpty() ||
+            (!m_client->hasAccessToken() && !m_client->hasRefreshToken())) {
+        return;
+    }
+
+    // aboutToQuit has no usable event loop for asynchronous work. Flush the
+    // stop with a short local loop; the server watchdog remains the backstop.
+    QEventLoop loop;
+    QPointer<QEventLoop> loopGuard(&loop);
+    QTimer timer;
+    timer.setSingleShot(true);
+    timer.setInterval(2500);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    m_client->post(QStringLiteral("/sessions/") + m_leaseId + QStringLiteral("/stop"),
+                   QJsonObject(), true, CryptoUtil::randomUuid(),
+                   [loopGuard](const ApiResult &) {
+                       // The reply may arrive after the timeout destroyed the
+                       // local loop; never touch a dangling object.
+                       if (loopGuard) {
+                           loopGuard->quit();
+                       }
+                   });
+    timer.start();
+    loop.exec();
 }
 
 void LegionApi::confirmWordsSaved()
@@ -1611,6 +1938,13 @@ void LegionApi::checkNetbirdStatus()
 
 void LegionApi::resetLocalAccount()
 {
+    // A local reset drops the device key and tokens without the logout
+    // ceremony. Stop the session network first; the shell may still stop the
+    // lease while the access token is usable.
+    setLeaseId(QString());
+    emit signOutStarted();
+    clearStoredConnectMaterial();
+
     if (m_client != nullptr) {
         m_client->clearTokens();
         m_client->setDeviceKey(nullptr);
@@ -1625,6 +1959,7 @@ void LegionApi::resetLocalAccount()
         m_vault->remove(QString::fromLatin1(kWordsVaultKey));
         m_vault->remove(QString::fromLatin1(kConsentVaultKey));
         m_vault->remove(QString::fromLatin1(kPendingIntentVaultKey));
+        m_vault->remove(QString::fromLatin1(kConnectVaultKey));
     }
 
     if (m_pollTimer != nullptr) {
@@ -2167,6 +2502,7 @@ void LegionApi::startSession(int clubId)
                            return;
                        }
                        setBusy(false);
+                       ++m_sessionMutationSeq;
                        emit response(QStringLiteral("session_start"), sessionData(result.json));
                    });
 }
@@ -2177,10 +2513,17 @@ void LegionApi::getCurrentSession()
         return;
     }
 
+    const int readSeq = m_sessionMutationSeq;
     m_client->get(QStringLiteral("/sessions/current"), true, CryptoUtil::randomUuid(),
-                  [this](const ApiResult &result) {
+                  [this, readSeq](const ApiResult &result) {
                       if (!result.ok) {
                           if (result.httpStatus == 404) {
+                              if (readSeq == m_sessionMutationSeq) {
+                                  // This read is newer than every mutation, so
+                                  // the lease really is gone.
+                                  setLeaseId(QString());
+                                  clearStoredConnectMaterial();
+                              }
                               QVariantMap data;
                               data.insert(QStringLiteral("session"), QVariant());
                               emit response(QStringLiteral("session_current"), data);
@@ -2188,6 +2531,17 @@ void LegionApi::getCurrentSession()
                           }
                           failFromResult(QStringLiteral("session_current"), result,
                                          [this]() { getCurrentSession(); });
+                          return;
+                      }
+                      if (readSeq != m_sessionMutationSeq) {
+                          // A start/stop/connect/claim completed after this read
+                          // started. Do not let the older snapshot overwrite
+                          // the lease id; the mutation payload is authoritative.
+                          QVariantMap data;
+                          data.insert(QStringLiteral("session"),
+                                      result.json.value(QStringLiteral("session"))
+                                          .toVariant());
+                          emit response(QStringLiteral("session_current"), data);
                           return;
                       }
                       emit response(QStringLiteral("session_current"), sessionData(result.json));
@@ -2231,7 +2585,30 @@ void LegionApi::stopSession(const QString &id)
                                           [this, id]() { stopSession(id); });
                            return;
                        }
-                       emit response(QStringLiteral("session_stop"), sessionData(result.json));
+                       const QString currentLease = m_leaseId;
+                       ++m_sessionMutationSeq;
+                       const QVariantMap payload = sessionData(result.json);
+                       if (currentLease == id.trimmed()) {
+                           setLeaseId(QString());
+                           // The lease is over: its one-shot material is dead.
+                           clearStoredConnectMaterial();
+                       }
+                       else if (!currentLease.isEmpty()) {
+                           // A stale page stopped an older lease; keep tracking
+                           // the live one and its material.
+                           setLeaseId(currentLease);
+                       }
+                       else {
+                           const QJsonObject material = loadConnectMaterial();
+                           if (material.value(QStringLiteral("session_id")).toString() ==
+                                   id.trimmed()) {
+                               clearStoredConnectMaterial();
+                           }
+                           // The response may echo the stopped session; do not
+                           // resume tracking a lease this call just ended.
+                           setLeaseId(currentLease);
+                       }
+                       emit response(QStringLiteral("session_stop"), payload);
                    });
 }
 
@@ -2240,23 +2617,68 @@ void LegionApi::connectSession(const QString &id)
     if (!ensureAccount(QStringLiteral("session_connect"))) {
         return;
     }
-    if (id.trimmed().isEmpty()) {
+    const QString leaseId = id.trimmed();
+    if (leaseId.isEmpty()) {
         fail(QStringLiteral("session_connect"), QStringLiteral("validation_error"),
              QStringLiteral("Сеанс не найден."));
         return;
     }
     setBusy(true);
     clearError();
-    m_client->post(QStringLiteral("/sessions/") + id.trimmed() + QStringLiteral("/connect"),
+
+    // Never ask the server for a second material while a valid copy is still
+    // in the vault: /connect is one-shot and a replay burns the lease.
+    const QJsonObject pending = loadConnectMaterial();
+    if (pending.value(QStringLiteral("session_id")).toString().trimmed() == leaseId) {
+        const QJsonObject payload = pending.value(QStringLiteral("payload")).toObject();
+        if (!payload.isEmpty()) {
+            setBusy(false);
+            setLeaseId(leaseId);
+            ++m_sessionMutationSeq;
+            emit response(QStringLiteral("session_connect"), payload.toVariantMap());
+            emit connectMaterialReady(leaseId, payload.toVariantMap());
+            return;
+        }
+    }
+
+    m_client->post(QStringLiteral("/sessions/") + leaseId + QStringLiteral("/connect"),
                    QJsonObject(), true, CryptoUtil::randomUuid(),
-                   [this](const ApiResult &result) {
+                   [this, leaseId](const ApiResult &result) {
                        setBusy(false);
                        if (!result.ok) {
+                           if (result.errorCode == QLatin1String("connect_material_consumed")) {
+                               // The server will not issue a second key for
+                               // this lease. Drop our copy so a retry cannot
+                               // replay a consumed token.
+                               clearStoredConnectMaterial();
+                           }
                            failFromResult(QStringLiteral("session_connect"), result);
                            return;
                        }
+
+                       if (m_logoutInProgress || m_state != QLatin1String("signed_in")) {
+                           // The user signed out while /connect was in flight.
+                           // Drop the material instead of starting NetBird for a
+                           // signed-out account; the lease stop is already in
+                           // flight and the watchdog is the backstop.
+                           clearStoredConnectMaterial();
+                           return;
+                       }
+
+                       const QString sessionId = result.json
+                           .value(QStringLiteral("session_id")).toString(leaseId);
+                       setLeaseId(sessionId);
+                       // Persist before any UI sees it: a page change, a QML
+                       // error or an app restart must not lose the only copy of
+                       // the one-shot material.
+                       persistConnectMaterial(sessionId, result.json);
+                       ++m_sessionMutationSeq;
+
+                       // The shell is the persistent owner of the connect
+                       // command; pages only render the progress.
                        emit response(QStringLiteral("session_connect"),
                                      result.json.toVariantMap());
+                       emit connectMaterialReady(sessionId, result.json.toVariantMap());
                    });
 }
 
@@ -2280,6 +2702,7 @@ void LegionApi::reconnectSession(const QString &id)
                                           [this, id]() { reconnectSession(id); });
                            return;
                        }
+                       ++m_sessionMutationSeq;
                        emit response(QStringLiteral("session_reconnect"),
                                      sessionData(result.json));
                    });
@@ -2376,6 +2799,7 @@ void LegionApi::claimQueue(const QString &id)
                                           [this, id]() { claimQueue(id); });
                            return;
                        }
+                       ++m_sessionMutationSeq;
                        emit response(QStringLiteral("queue_claim"), sessionData(result.json));
                    });
 }
@@ -2480,16 +2904,40 @@ void LegionApi::notifyPaymentReturn(const QString &publicId)
 QVariantMap LegionApi::sessionData(const QJsonObject &json)
 {
     QVariantMap data;
+    QJsonObject session;
     if (json.contains(QStringLiteral("session"))) {
+        session = json.value(QStringLiteral("session")).toObject();
         data.insert(QStringLiteral("session"),
                     json.value(QStringLiteral("session")).toVariant());
     }
     else if (!json.isEmpty()) {
+        session = json;
         data.insert(QStringLiteral("session"),
                     QVariant::fromValue(json.toVariantMap()));
     }
     else {
         data.insert(QStringLiteral("session"), QVariant());
+    }
+
+    // Track the server lease id so logout/quit can stop exactly this lease and
+    // StreamSegue can end it when the stream finishes. A terminal session is
+    // not stoppable and must not keep a stale id around.
+    const QString sessionId = session.value(QStringLiteral("id")).toString();
+    const QString status = session.value(QStringLiteral("status")).toString();
+    if (sessionId.isEmpty() || status == QLatin1String("expired") ||
+            status == QLatin1String("stopped")) {
+        setLeaseId(QString());
+    }
+    else {
+        setLeaseId(sessionId);
+        if (status == QLatin1String("active") && m_connectPending) {
+            // An active lease has already consumed its one-shot material. Drop
+            // a leftover copy from a crash after the PIN relay.
+            const QJsonObject material = loadConnectMaterial();
+            if (material.value(QStringLiteral("session_id")).toString() == sessionId) {
+                clearStoredConnectMaterial();
+            }
+        }
     }
     return data;
 }

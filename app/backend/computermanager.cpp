@@ -203,6 +203,17 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
     connect(m_LegionConnect, &LegionConnect::progress, this, &ComputerManager::legionConnectProgress);
     connect(m_LegionConnect, &LegionConnect::failed, this, &ComputerManager::legionConnectFailed);
     connect(m_LegionConnect, &LegionConnect::succeeded, this, &ComputerManager::legionConnectSucceeded);
+    connect(m_LegionConnect, &LegionConnect::hostIdentified, this,
+            [this](const QString &uuid) {
+                if (uuid.isEmpty() || uuid == m_LegionLeaseHostUuid) {
+                    return;
+                }
+                m_LegionLeaseHostUuid = uuid;
+                saveLegionLeaseContext();
+                emit legionLeaseContextChanged();
+            });
+
+    loadLegionLeaseContext();
 
     // Start the delayed flush thread to handle saveHosts() calls
     m_DelayedFlushThread = new DelayedFlushThread(this);
@@ -732,6 +743,13 @@ void ComputerManager::quitRunningApp(NvComputer* computer)
 
 void ComputerManager::startLegionConnectWithData(const QVariantMap &data)
 {
+    setLegionLeaseId(data.value(QStringLiteral("session_id")).toString().trimmed());
+    m_LegionLeaseHostAddress =
+        data.value(QStringLiteral("pc_netbird_ip")).toString().trimmed();
+    saveLegionLeaseContext();
+    if (!m_LegionLeaseHostAddress.isEmpty()) {
+        emit legionLeaseContextChanged();
+    }
     m_LegionConnect->startWithPayload(data);
 }
 
@@ -740,6 +758,64 @@ void ComputerManager::stopLegionConnect()
     if (m_LegionConnect != nullptr) {
         m_LegionConnect->disconnect();
     }
+    clearLegionLeaseContext();
+}
+
+bool ComputerManager::legionConnectBusy() const
+{
+    return m_LegionConnect != nullptr && m_LegionConnect->isBusy();
+}
+
+void ComputerManager::clearLegionLeaseContext()
+{
+    if (m_LegionLeaseId.isEmpty() && m_LegionLeaseHostUuid.isEmpty() &&
+            m_LegionLeaseHostAddress.isEmpty()) {
+        return;
+    }
+    m_LegionLeaseId.clear();
+    m_LegionLeaseHostUuid.clear();
+    m_LegionLeaseHostAddress.clear();
+    saveLegionLeaseContext();
+    emit legionLeaseContextChanged();
+}
+
+void ComputerManager::setLegionLeaseId(const QString &leaseId)
+{
+    // A new lease always invalidates the previous host binding until the new
+    // host appears on the overlay and identifies itself.
+    if (m_LegionLeaseId == leaseId && m_LegionLeaseHostUuid.isEmpty() &&
+            m_LegionLeaseHostAddress.isEmpty()) {
+        return;
+    }
+    m_LegionLeaseId = leaseId;
+    m_LegionLeaseHostUuid.clear();
+    m_LegionLeaseHostAddress.clear();
+    saveLegionLeaseContext();
+    emit legionLeaseContextChanged();
+}
+
+void ComputerManager::loadLegionLeaseContext()
+{
+    QSettings settings;
+    m_LegionLeaseId = settings.value(QStringLiteral("legion/leaseId")).toString();
+    m_LegionLeaseHostUuid = settings.value(QStringLiteral("legion/leaseHostUuid")).toString();
+    m_LegionLeaseHostAddress =
+        settings.value(QStringLiteral("legion/leaseHostAddress")).toString();
+}
+
+void ComputerManager::saveLegionLeaseContext()
+{
+    QSettings settings;
+    if (m_LegionLeaseId.isEmpty() && m_LegionLeaseHostUuid.isEmpty() &&
+            m_LegionLeaseHostAddress.isEmpty()) {
+        settings.remove(QStringLiteral("legion/leaseId"));
+        settings.remove(QStringLiteral("legion/leaseHostUuid"));
+        settings.remove(QStringLiteral("legion/leaseHostAddress"));
+        return;
+    }
+    settings.setValue(QStringLiteral("legion/leaseId"), m_LegionLeaseId);
+    settings.setValue(QStringLiteral("legion/leaseHostUuid"), m_LegionLeaseHostUuid);
+    settings.setValue(QStringLiteral("legion/leaseHostAddress"), m_LegionLeaseHostAddress);
 }
 
 void ComputerManager::stopPollingAsync()

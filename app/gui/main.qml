@@ -103,7 +103,7 @@ ApplicationWindow {
         target: streamLauncher
         ignoreUnknownSignals: true
 
-        function onStartRequested(session, appName, isResume) {
+        function onStartRequested(session, appName, isResume, leaseId) {
             if (!session) {
                 return
             }
@@ -115,11 +115,24 @@ ApplicationWindow {
             var segue = component.createObject(stackView, {
                 "session": session,
                 "appName": appName,
-                "isResume": isResume === true
+                "isResume": isResume === true,
+                "leaseId": leaseId ? String(leaseId) : ""
             })
             if (segue) {
                 stackView.push(segue)
             }
+        }
+    }
+
+    // Sign-out order (F5): LegionApi emits this synchronously before it clears
+    // the session/account state, so the NetBird session profile and any
+    // in-flight connect are torn down while the account is still valid.
+    Connections {
+        target: (typeof legionApi !== "undefined") ? legionApi : null
+        ignoreUnknownSignals: true
+
+        function onSignOutStarted() {
+            ComputerManager.stopLegionConnect()
         }
     }
 
