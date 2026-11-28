@@ -12,6 +12,7 @@ namespace {
 
 const char kScheme[] = "legiongames";
 const char kPaymentHost[] = "payment";
+const char kReferralHost[] = "ref";
 #ifdef LG_STAGING_BUILD
 const char kServerName[] = "ru.legiongames.moonlight.staging.deeplink";
 const char kSharedMemoryKey[] = "ru.legiongames.moonlight.staging.deeplink.v1";
@@ -27,6 +28,36 @@ bool isPaymentUuid(const QString &value)
         QStringLiteral("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
                        "[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"));
     return uuid.match(value).hasMatch();
+}
+
+bool isReferralCode(const QString &value)
+{
+    static const QRegularExpression code(QStringLiteral("^[A-Za-z0-9_-]{3,32}$"));
+    return code.match(value).hasMatch();
+}
+
+QString hostPathValue(const QUrl &parsed, const QString &host)
+{
+    QString candidate;
+    if (parsed.host().compare(host, Qt::CaseInsensitive) == 0) {
+        candidate = parsed.path();
+        while (candidate.startsWith(QLatin1Char('/'))) {
+            candidate.remove(0, 1);
+        }
+        return candidate;
+    }
+
+    // Also accept the opaque form legiongames:<host>/<value>.
+    QString path = parsed.path();
+    while (path.startsWith(QLatin1Char('/'))) {
+        path.remove(0, 1);
+    }
+    QString prefix = host;
+    prefix += QLatin1Char('/');
+    if (path.startsWith(prefix, Qt::CaseInsensitive)) {
+        return path.mid(prefix.size());
+    }
+    return QString();
 }
 
 } // namespace
@@ -76,6 +107,35 @@ QString DeepLink::paymentIdFromUrl(const QString &url)
     }
 
     return isPaymentUuid(candidate) ? candidate.toLower() : QString();
+}
+
+QString DeepLink::referralCodeFromUrl(const QString &url)
+{
+    if (url.isEmpty()) {
+        return QString();
+    }
+
+    const QUrl parsed(url.trimmed(), QUrl::StrictMode);
+    if (!parsed.isValid() ||
+        parsed.scheme().compare(QLatin1String(kScheme), Qt::CaseInsensitive) != 0) {
+        return QString();
+    }
+
+    const QString candidate = hostPathValue(parsed, QString::fromLatin1(kReferralHost));
+    return isReferralCode(candidate) ? candidate.toUpper() : QString();
+}
+
+QString DeepLink::canonicalReferralUrl(const QString &code)
+{
+    if (!isReferralCode(code)) {
+        return QString();
+    }
+
+    QString url = QStringLiteral("legiongames://");
+    url += QLatin1String(kReferralHost);
+    url += QLatin1Char('/');
+    url += code.toUpper();
+    return url;
 }
 
 QString DeepLink::canonicalPaymentUrl(const QString &paymentId)
@@ -137,6 +197,38 @@ QString DeepLink::paymentIdFromArguments(const QStringList &arguments)
     return QString();
 }
 
+QString DeepLink::referralCodeFromArguments(const QStringList &arguments)
+{
+    for (int i = 0; i < arguments.size(); ++i) {
+        const QString &argument = arguments.at(i);
+
+        if (argument == QLatin1String("--url") && i + 1 < arguments.size()) {
+            const QString code = referralCodeFromUrl(arguments.at(i + 1));
+            if (!code.isEmpty()) {
+                return code;
+            }
+            continue;
+        }
+
+        if (argument.startsWith(QLatin1String("--url="))) {
+            const QString code = referralCodeFromUrl(argument.mid(6));
+            if (!code.isEmpty()) {
+                return code;
+            }
+            continue;
+        }
+
+        if (argument.startsWith(QLatin1String("legiongames:"), Qt::CaseInsensitive)) {
+            const QString code = referralCodeFromUrl(argument);
+            if (!code.isEmpty()) {
+                return code;
+            }
+        }
+    }
+
+    return QString();
+}
+
 QString DeepLink::serverName()
 {
     return QString::fromLatin1(kServerName);
@@ -151,6 +243,13 @@ QString DeepLink::takePendingPaymentId()
 {
     const QString pending = m_pendingPaymentId;
     m_pendingPaymentId.clear();
+    return pending;
+}
+
+QString DeepLink::takePendingReferralCode()
+{
+    const QString pending = m_pendingReferralCode;
+    m_pendingReferralCode.clear();
     return pending;
 }
 
@@ -270,6 +369,13 @@ void DeepLink::handleSocketData(QLocalSocket *socket)
         if (!paymentId.isEmpty()) {
             m_pendingPaymentId = paymentId;
             emit paymentUrlReceived(paymentId);
+        }
+        else {
+            const QString referralCode = referralCodeFromUrl(QString::fromUtf8(line));
+            if (!referralCode.isEmpty()) {
+                m_pendingReferralCode = referralCode;
+                emit referralCodeReceived(referralCode);
+            }
         }
 
         newline = buffer.indexOf('\n');

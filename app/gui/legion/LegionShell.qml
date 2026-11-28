@@ -63,7 +63,7 @@ Item {
     // The shell shows a dedicated re-login/recovery gate instead of the app.
     readonly property bool authExpired: appState === "session_expired"
 
-    // app | onboarding | startup
+    // app | onboarding | deletion | startup
     readonly property string mode: {
         if (!Api.available(api)) {
             return "startup"
@@ -75,6 +75,8 @@ Item {
         case "consent":
         case "onboarding":
             return "onboarding"
+        case "deletion_pending":
+            return "deletion"
         case "session_expired":
             return "startup"
         default:
@@ -145,6 +147,22 @@ Item {
     readonly property int sessionCacheTtlMs: queryStore.sessionCacheTtlMs
     readonly property int queueCacheTtlMs: queryStore.queueCacheTtlMs
     readonly property int sessionHistoryCacheTtlMs: queryStore.sessionHistoryCacheTtlMs
+
+    // Optional account read models (gamification, aggregate summary). They
+    // never block the main flows; a missing endpoint leaves an empty model and
+    // the views render their safe stub state.
+    property var gamification: ({})
+    property var accountSummary: ({})
+    property double gamificationFetchedAt: 0
+    property double summaryFetchedAt: 0
+    property bool gamificationInFlight: false
+    property bool summaryInFlight: false
+    property string gamificationError: ""
+    property string summaryError: ""
+    readonly property int gamificationCacheTtlMs: 30000
+    readonly property int summaryCacheTtlMs: 15000
+    readonly property string deletionRequestedAt: api ? (api.deletionRequestedAt || "") : ""
+    readonly property string purgeAfter: api ? (api.purgeAfter || "") : ""
 
     // Navigation
     property string section: "home"
@@ -305,6 +323,42 @@ Item {
         return queryStore.refreshAll(force)
     }
 
+    function refreshGamification(force) {
+        if (gamificationInFlight) {
+            return false
+        }
+        if (!force && gamificationFetchedAt > 0 &&
+                (Date.now() - gamificationFetchedAt) < gamificationCacheTtlMs) {
+            return false
+        }
+        gamificationInFlight = true
+        gamificationError = ""
+        if (!Api.getGamification(api)) {
+            gamificationInFlight = false
+            gamificationError = "unsupported_capability"
+            return false
+        }
+        return true
+    }
+
+    function refreshAccountSummary(force) {
+        if (summaryInFlight) {
+            return false
+        }
+        if (!force && summaryFetchedAt > 0 &&
+                (Date.now() - summaryFetchedAt) < summaryCacheTtlMs) {
+            return false
+        }
+        summaryInFlight = true
+        summaryError = ""
+        if (!Api.getAccountSummary(api)) {
+            summaryInFlight = false
+            summaryError = "unsupported_capability"
+            return false
+        }
+        return true
+    }
+
     function clubById(id) {
         return queryStore.clubById(id)
     }
@@ -333,6 +387,8 @@ Item {
             showSection("home")
         }
         refreshAll(true)
+        refreshGamification(true)
+        refreshAccountSummary(true)
     }
 
     function syncWords() {
@@ -364,6 +420,10 @@ Item {
         else if (shell.recoveryVisible && recoveryOverlay.item &&
                  typeof recoveryOverlay.item.focusFirst === "function") {
             recoveryOverlay.item.focusFirst()
+        }
+        else if (shell.mode === "deletion" && deletionLoader.item &&
+                 typeof deletionLoader.item.focusFirst === "function") {
+            deletionLoader.item.focusFirst()
         }
         else if (shell.mode === "onboarding" && onboardingLoader.item &&
                  typeof onboardingLoader.item.focusFirst === "function") {
@@ -564,6 +624,25 @@ Item {
                 shell.sessionHistoryFetchedAt = Date.now()
                 shell.sessionHistoryError = ""
             }
+            else if (op === "gamification") {
+                shell.gamification = data ? data : ({})
+                shell.gamificationInFlight = false
+                shell.gamificationFetchedAt = Date.now()
+                shell.gamificationError = ""
+            }
+            else if (op === "account_summary") {
+                shell.accountSummary = data ? data : ({})
+                shell.summaryInFlight = false
+                shell.summaryFetchedAt = Date.now()
+                shell.summaryError = ""
+            }
+            else if (op === "account_restore") {
+                // The restore response already carries fresh tokens. Refresh
+                // every projection instead of trusting a local timer.
+                shell.refreshAll(true)
+                shell.refreshGamification(true)
+                shell.refreshAccountSummary(true)
+            }
         }
 
         function onFailed(op, code, message) {
@@ -599,6 +678,14 @@ Item {
                 shell.sessionHistoryInFlight = false
                 shell.sessionHistoryLoading = false
                 shell.sessionHistoryError = code ? String(code) : "server_error"
+            }
+            else if (op === "gamification") {
+                shell.gamificationInFlight = false
+                shell.gamificationError = code ? String(code) : "server_error"
+            }
+            else if (op === "account_summary") {
+                shell.summaryInFlight = false
+                shell.summaryError = code ? String(code) : "server_error"
             }
             if (op === "session_connect" && code === "connect_material_consumed") {
                 // The server will not reissue the material for this lease.
@@ -820,7 +907,8 @@ Item {
         shell: shell
         z: 45
         backgroundSource: shell.mode === "app" ? appRow
-                         : (shell.mode === "onboarding" ? onboardingLoader : null)
+                         : (shell.mode === "onboarding" ? onboardingLoader
+                         : (shell.mode === "deletion" ? deletionLoader : null))
         retryAction: function() {
             Api.retryFailedStep(shell.api)
         }
@@ -930,6 +1018,20 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // ---- deletion grace period -----------------------------------------
+
+    Loader {
+        id: deletionLoader
+        anchors.fill: parent
+        active: shell.mode === "deletion"
+        visible: active
+        source: "qrc:/gui/legion/DeletionPendingView.qml"
+        onLoaded: {
+            item.shell = shell
+            item.activate()
         }
     }
 

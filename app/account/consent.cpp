@@ -12,6 +12,8 @@ const char kUserAgreement[] = "user_agreement";
 const char kPdnConsent[] = "pdn_consent";
 const char kLocale[] = "ru-RU";
 
+QString s_pendingReferralCode;
+
 bool isValidSha256(const QString &value)
 {
     static const QRegularExpression hex(QStringLiteral("^[0-9a-fA-F]{64}$"));
@@ -162,7 +164,8 @@ bool Consent::find(const QList<LegalDocumentInfo> &documents, const QString &doc
 QJsonObject Consent::buildPayload(const QString &ceremonyId, bool agreement, bool pdnConsent,
                                   const QList<LegalDocumentInfo> &documents,
                                   const QString &deviceLabel, const QString &appVersion,
-                                  const QString &clientAcceptedAt, QString *errorCode)
+                                  const QString &clientAcceptedAt, QString *errorCode,
+                                  const QString &referralCode)
 {
     if (!agreement || !pdnConsent) {
         if (errorCode) {
@@ -215,6 +218,17 @@ QJsonObject Consent::buildPayload(const QString &ceremonyId, bool agreement, boo
     payload.insert(QStringLiteral("app_version"),
                    appVersion.isEmpty() ? QStringLiteral("0.0.0+0") : appVersion);
 
+    // Optional referral attribution. The key is omitted when empty so the
+    // payload for an invitation-free registration stays byte-identical to the
+    // previously accepted schema.
+    QString referral = referralCode.trimmed();
+    if (referral.isEmpty()) {
+        referral = s_pendingReferralCode.trimmed();
+    }
+    if (!referral.isEmpty()) {
+        payload.insert(QStringLiteral("referral_code"), referral);
+    }
+
     if (errorCode) {
         errorCode->clear();
     }
@@ -224,6 +238,11 @@ QJsonObject Consent::buildPayload(const QString &ceremonyId, bool agreement, boo
 QByteArray Consent::signedBytes(const QJsonObject &payload)
 {
     return CryptoUtil::canonicalJson(payload);
+}
+
+void Consent::setPendingReferralCode(const QString &code)
+{
+    s_pendingReferralCode = code.trimmed();
 }
 
 bool Consent::isCurrent(const QJsonObject &storedRecord,

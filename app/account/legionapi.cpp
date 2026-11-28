@@ -111,6 +111,26 @@ QJsonArray toJsonArray(const QStringList &values)
     return array;
 }
 
+QString normalizeReferralCode(const QString &value)
+{
+    const QString trimmed = value.trimmed().toUpper();
+    QString normalized;
+    normalized.reserve(trimmed.size());
+    for (const QChar character : trimmed) {
+        const ushort code = character.unicode();
+        const bool latinUpper = code >= 'A' && code <= 'Z';
+        const bool digit = code >= '0' && code <= '9';
+        if (latinUpper || digit ||
+                character == QLatin1Char('-') || character == QLatin1Char('_')) {
+            normalized.append(character);
+        }
+        if (normalized.size() >= 32) {
+            break;
+        }
+    }
+    return normalized.size() >= 3 ? normalized : QString();
+}
+
 } // namespace
 
 LegionApi::LegionApi(QObject *parent) :
@@ -169,7 +189,14 @@ void LegionApi::initialize()
             // A revoked device can no longer own a lease or hold material.
             setLeaseId(QString());
             clearStoredConnectMaterial();
-            setState(QStringLiteral("revoked"));
+            if (!m_deletionRequestedAt.isEmpty()) {
+                // The revocation is the deletion grace period, not a lost
+                // device: keep the dedicated restore gate.
+                setState(QStringLiteral("deletion_pending"));
+            }
+            else {
+                setState(QStringLiteral("revoked"));
+            }
         }
         else if (code == QLatin1String("unknown_device")) {
             if (m_vault != nullptr) {
@@ -579,7 +606,11 @@ void LegionApi::failFromResult(const QString &op, const ApiResult &result,
         }
         setLeaseId(QString());
         clearStoredConnectMaterial();
-        setState(QStringLiteral("revoked"));
+        setState(!m_deletionRequestedAt.isEmpty() ? QStringLiteral("deletion_pending")
+                                                  : QStringLiteral("revoked"));
+    }
+    else if (result.errorCode == QLatin1String("account_deletion_pending")) {
+        setState(QStringLiteral("deletion_pending"));
     }
     else if (result.errorCode == QLatin1String("consent_version_mismatch") ||
              result.errorCode == QLatin1String("consent_required")) {
@@ -656,6 +687,8 @@ void LegionApi::loadAccountRecord()
     }
     setHandle(record.value(QStringLiteral("handle")).toString());
     setOnboardingStep(record.value(QStringLiteral("onboarding_step")).toString());
+    setDeletionState(record.value(QStringLiteral("deletion_requested_at")).toString(),
+                     record.value(QStringLiteral("purge_after")).toString());
 }
 
 void LegionApi::persistAccount()
@@ -668,6 +701,12 @@ void LegionApi::persistAccount()
     record.insert(QStringLiteral("v"), 1);
     record.insert(QStringLiteral("handle"), m_handle);
     record.insert(QStringLiteral("onboarding_step"), m_onboardingStep);
+    record.insert(QStringLiteral("deletion_requested_at"),
+                  m_deletionRequestedAt.isEmpty() ? QJsonValue(QJsonValue::Null)
+                                                  : QJsonValue(m_deletionRequestedAt));
+    record.insert(QStringLiteral("purge_after"),
+                  m_purgeAfter.isEmpty() ? QJsonValue(QJsonValue::Null)
+                                         : QJsonValue(m_purgeAfter));
     record.insert(QStringLiteral("saved_at"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
 
     if (!m_vault->save(QString::fromLatin1(kAccountVaultKey),
@@ -709,6 +748,16 @@ void LegionApi::setOnboardingStep(const QString &step)
     }
     m_onboardingStep = step;
     emit onboardingStepChanged();
+}
+
+void LegionApi::setDeletionState(const QString &requestedAt, const QString &purgeAfter)
+{
+    if (m_deletionRequestedAt == requestedAt && m_purgeAfter == purgeAfter) {
+        return;
+    }
+    m_deletionRequestedAt = requestedAt;
+    m_purgeAfter = purgeAfter;
+    emit deletionStateChanged();
 }
 
 void LegionApi::applyDevice(const QJsonObject &device)
@@ -921,11 +970,14 @@ void LegionApi::applyMe(const QJsonObject &json)
     if (!step.isEmpty()) {
         setOnboardingStep(step);
     }
-    persistAccount();
     applyDevice(json.value(QStringLiteral("device")).toObject());
-    emit response(QStringLiteral("me"), json.toVariantMap());
 
     const QString deletion = json.value(QStringLiteral("deletion_requested_at")).toString();
+    const QString purgeAfter = json.value(QStringLiteral("purge_after")).toString();
+    setDeletionState(deletion, purgeAfter);
+    persistAccount();
+    emit response(QStringLiteral("me"), json.toVariantMap());
+
     if (!deletion.isEmpty()) {
         setState(QStringLiteral("deletion_pending"));
         return;
@@ -962,6 +1014,14 @@ void LegionApi::applyAuthResponse(const QString &op, const ApiResult &result,
 {
     clearError();
     const QJsonObject json = result.json;
+
+    // A successful register/login consumes any onboarding referral code. It is
+    // never attached to a later re-consent or recovery ceremony.
+    Consent::setPendingReferralCode(QString());
+    if (!m_referralCode.isEmpty()) {
+        m_referralCode.clear();
+        emit referralCodeChanged();
+    }
 
     if (adoptedKey != nullptr) {
         replaceDeviceKey(adoptedKey);
@@ -1056,7 +1116,12 @@ void LegionApi::handleAuthFailure(const QString &op, const ApiResult &result, bo
         }
         setLeaseId(QString());
         clearStoredConnectMaterial();
-        setState(QStringLiteral("revoked"));
+        if (!m_deletionRequestedAt.isEmpty()) {
+            setState(QStringLiteral("deletion_pending"));
+        }
+        else {
+            setState(QStringLiteral("revoked"));
+        }
         if (!silent) {
             fail(op, result.errorCode, result.message);
         }
@@ -1139,6 +1204,19 @@ void LegionApi::signInAfterAuth()
                           setBusy(false);
                           setState(QStringLiteral("offline"));
                           silentFailure(result.errorCode, result.message);
+                          return;
+                      }
+
+                      if (result.errorCode == QLatin1String("account_deletion_pending")) {
+                          setBusy(false);
+                          setState(QStringLiteral("deletion_pending"));
+                          return;
+                      }
+                      if ((result.errorCode == QLatin1String("device_revoked") ||
+                           result.errorCode == QLatin1String("device_stale")) &&
+                              !m_deletionRequestedAt.isEmpty()) {
+                          setBusy(false);
+                          setState(QStringLiteral("deletion_pending"));
                           return;
                       }
 
@@ -1236,6 +1314,8 @@ void LegionApi::submitConsent()
     if (!ensureAccount(QStringLiteral("consent"))) {
         return;
     }
+    // Re-consent is never a referral attribution surface.
+    Consent::setPendingReferralCode(QString());
     if (!m_agreement || !m_pdnConsent) {
         setState(QStringLiteral("consent"));
         emit consentRequired();
@@ -1401,6 +1481,10 @@ void LegionApi::registerAccount(const QString &label)
                                                CryptoUtil::base64UrlEncode(ceremonySignature)));
                            complete.insert(QStringLiteral("label"), deviceLabel(QString()));
                            complete.insert(QStringLiteral("consent"), consent);
+                            if (!m_referralCode.isEmpty()) {
+                                complete.insert(QStringLiteral("referral_code"),
+                                                m_referralCode);
+                            }
 
                            m_client->post(
                                QStringLiteral("/auth/register/complete"), complete, false,
@@ -1516,6 +1600,16 @@ void LegionApi::finishLogout(int generation)
         emit wordsChanged();
         m_recoveryKitPath.clear();
         emit recoveryKitPathChanged();
+        setReferralCode(QString());
+        setDeletionState(QString(), QString());
+        if (!m_gamification.isEmpty()) {
+            m_gamification.clear();
+            emit gamificationChanged();
+        }
+        if (!m_accountSummary.isEmpty()) {
+            m_accountSummary.clear();
+            emit accountSummaryChanged();
+        }
         setBusy(false);
         setState(QStringLiteral("no_account"));
     };
@@ -1743,6 +1837,9 @@ void LegionApi::recoverComplete(const QString &handle, const QStringList &words,
     if (!ensureVault(QStringLiteral("recover")) || !ensureClient(QStringLiteral("recover"))) {
         return;
     }
+
+    // Recovery is never a referral attribution surface.
+    Consent::setPendingReferralCode(QString());
 
     if (!m_agreement || !m_pdnConsent) {
         setState(QStringLiteral("consent"));
@@ -1979,6 +2076,16 @@ void LegionApi::resetLocalAccount()
 
     setHandle(QString());
     setOnboardingStep(QString());
+    setReferralCode(QString());
+    setDeletionState(QString(), QString());
+    if (!m_gamification.isEmpty()) {
+        m_gamification.clear();
+        emit gamificationChanged();
+    }
+    if (!m_accountSummary.isEmpty()) {
+        m_accountSummary.clear();
+        emit accountSummaryChanged();
+    }
     clearError();
     setBusy(false);
     setState(QStringLiteral("no_account"));
@@ -2048,15 +2155,158 @@ void LegionApi::deleteAccount(const QString &handle, const QStringList &words)
                     emit wordsChanged();
 
                     setBusy(false);
+                    setDeletionState(
+                        result.json.value(QStringLiteral("deletion_requested_at")).toString(),
+                        result.json.value(QStringLiteral("purge_after")).toString());
+                    persistAccount();
                     setState(QStringLiteral("deletion_pending"));
 
                     QVariantMap data;
                     data.insert(QStringLiteral("deletion_requested_at"),
                                 result.json.value(QStringLiteral("deletion_requested_at"))
                                     .toVariant());
+                    data.insert(QStringLiteral("purge_after"),
+                                result.json.value(QStringLiteral("purge_after")).toVariant());
                     emit response(QStringLiteral("account_delete"), data);
                 });
         });
+}
+
+void LegionApi::restoreAccount(const QString &handle, const QStringList &words)
+{
+    if (!ensureClient(QStringLiteral("account_restore")) ||
+            !ensureVault(QStringLiteral("account_restore"))) {
+        return;
+    }
+
+    const QString normalizedHandle = handle.trimmed().toLower();
+    const QStringList normalizedWords = normalizeWords(words);
+    if (normalizedHandle.isEmpty() || normalizedWords.size() != 8) {
+        fail(QStringLiteral("account_restore"), QStringLiteral("deletion_invalid"),
+             QStringLiteral("Введите имя аккаунта и все 8 слов."));
+        return;
+    }
+    if (!ensureDeviceKey(QStringLiteral("account_restore"), false)) {
+        return;
+    }
+
+    setBusy(true);
+    clearError();
+
+    QJsonObject beginBody;
+    beginBody.insert(QStringLiteral("handle"), normalizedHandle);
+    beginBody.insert(QStringLiteral("words"), toJsonArray(normalizedWords));
+    beginBody.insert(QStringLiteral("recovery_code"),
+                     normalizedWords.join(QLatin1Char(' ')));
+
+    m_client->post(
+        QStringLiteral("/account/restore/begin"), beginBody, false,
+        CryptoUtil::randomUuid(),
+        [this, normalizedHandle, normalizedWords](const ApiResult &begin) {
+            if (!begin.ok) {
+                failFromResult(QStringLiteral("account_restore"), begin,
+                               [this, normalizedHandle, normalizedWords]() {
+                                   restoreAccount(normalizedHandle, normalizedWords);
+                               });
+                return;
+            }
+
+            const QString ceremonyId =
+                begin.json.value(QStringLiteral("ceremony_id")).toString();
+            const QString challenge =
+                begin.json.value(QStringLiteral("challenge")).toString();
+            if (ceremonyId.isEmpty() || challenge.isEmpty()) {
+                fail(QStringLiteral("account_restore"),
+                     QStringLiteral("invalid_response"),
+                     QStringLiteral("Сервер вернул неверный ответ. Повторите попытку."));
+                return;
+            }
+
+            const QByteArray signature =
+                signCeremony(ceremonyId, challenge, QStringLiteral("restore"));
+            if (signature.size() != 64) {
+                fail(QStringLiteral("account_restore"),
+                     QStringLiteral("proof_sign_failed"),
+                     QStringLiteral("Не удалось подтвердить устройство."));
+                return;
+            }
+
+            QJsonObject completeBody;
+            completeBody.insert(QStringLiteral("ceremony_id"), ceremonyId);
+            completeBody.insert(QStringLiteral("signature"),
+                                QString::fromLatin1(CryptoUtil::base64UrlEncode(signature)));
+            completeBody.insert(QStringLiteral("handle"), normalizedHandle);
+
+            m_client->post(
+                QStringLiteral("/account/restore/complete"), completeBody, false,
+                CryptoUtil::randomUuid(),
+                [this](const ApiResult &result) {
+                    if (!result.ok) {
+                        failFromResult(QStringLiteral("account_restore"), result);
+                        return;
+                    }
+
+                    setDeletionState(QString(), QString());
+                    applyAuthResponse(QStringLiteral("account_restore"), result);
+                });
+        });
+}
+
+void LegionApi::setReferralCode(const QString &code)
+{
+    const QString normalized = normalizeReferralCode(code);
+    if (m_referralCode == normalized) {
+        Consent::setPendingReferralCode(normalized);
+        return;
+    }
+    m_referralCode = normalized;
+    Consent::setPendingReferralCode(normalized);
+    emit referralCodeChanged();
+}
+
+void LegionApi::notifyReferralCode(const QString &code)
+{
+    // A deep link only pre-fills the onboarding field. It never creates an
+    // account or bypasses the signed consent request.
+    setReferralCode(code);
+}
+
+void LegionApi::getGamification()
+{
+    if (!ensureAccount(QStringLiteral("gamification"))) {
+        return;
+    }
+
+    m_client->get(QStringLiteral("/gamification"), true, CryptoUtil::randomUuid(),
+                  [this](const ApiResult &result) {
+                      if (!result.ok) {
+                          failFromResult(QStringLiteral("gamification"), result,
+                                         [this]() { getGamification(); });
+                          return;
+                      }
+                      m_gamification = result.json.toVariantMap();
+                      emit gamificationChanged();
+                      emit response(QStringLiteral("gamification"), m_gamification);
+                  });
+}
+
+void LegionApi::getAccountSummary()
+{
+    if (!ensureAccount(QStringLiteral("account_summary"))) {
+        return;
+    }
+
+    m_client->get(QStringLiteral("/account/summary"), true, CryptoUtil::randomUuid(),
+                  [this](const ApiResult &result) {
+                      if (!result.ok) {
+                          failFromResult(QStringLiteral("account_summary"), result,
+                                         [this]() { getAccountSummary(); });
+                          return;
+                      }
+                      m_accountSummary = result.json.toVariantMap();
+                      emit accountSummaryChanged();
+                      emit response(QStringLiteral("account_summary"), m_accountSummary);
+                  });
 }
 
 void LegionApi::getLegalDocuments()
@@ -2123,11 +2373,21 @@ void LegionApi::refreshMe()
     m_client->get(QStringLiteral("/me"), true, CryptoUtil::randomUuid(),
                   [this](const ApiResult &result) {
                       if (!result.ok) {
+                          if (result.errorCode == QLatin1String("account_deletion_pending")) {
+                              setBusy(false);
+                              setState(QStringLiteral("deletion_pending"));
+                              return;
+                          }
                           if (result.errorCode == QLatin1String("device_revoked") ||
                               result.errorCode == QLatin1String("device_stale")) {
                               m_client->clearTokens();
                               setBusy(false);
-                              setState(QStringLiteral("revoked"));
+                              if (!m_deletionRequestedAt.isEmpty()) {
+                                  setState(QStringLiteral("deletion_pending"));
+                              }
+                              else {
+                                  setState(QStringLiteral("revoked"));
+                              }
                               return;
                           }
                           failFromResult(QStringLiteral("refresh_me"), result,

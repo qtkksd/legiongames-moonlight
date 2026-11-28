@@ -14,6 +14,13 @@ LegionView {
     readonly property real total: Api.totalBalance(rows)
     readonly property bool empty: rows.length === 0
 
+    property var historyItems: []
+    property string historyCursor: ""
+    property bool historyLoading: false
+    property bool historyLoaded: false
+    property string historyError: ""
+    property string pendingCursor: ""
+
     function activate() {
         if (shell) {
             shell.refreshWallet()
@@ -21,6 +28,45 @@ LegionView {
                 shell.loadCatalog(false)
             }
         }
+        if (!historyLoaded && !historyLoading) {
+            loadHistory(true)
+        }
+    }
+
+    function loadHistory(reset) {
+        if (historyLoading) {
+            return
+        }
+        if (reset) {
+            historyItems = []
+            historyCursor = ""
+            pendingCursor = ""
+            historyLoaded = false
+        }
+        historyLoading = true
+        historyError = ""
+        if (!Api.getWalletHistory(api, pendingCursor)) {
+            historyLoading = false
+            historyError = "unsupported_capability"
+        }
+    }
+
+    function loadMoreHistory() {
+        if (historyCursor.length === 0) {
+            return
+        }
+        pendingCursor = historyCursor
+        loadHistory(false)
+    }
+
+    function historyClubName(item) {
+        if (item && item.club_name && String(item.club_name).length > 0) {
+            return String(item.club_name)
+        }
+        if (item && item.club_id !== undefined) {
+            return wallet.clubName(item.club_id)
+        }
+        return qsTr("Клуб")
     }
 
     Connections {
@@ -31,11 +77,30 @@ LegionView {
             if (op === "wallet") {
                 wallet.clearError()
             }
+            else if (op === "wallet_history") {
+                var items = (data && data.items) ? data.items : []
+                if (wallet.pendingCursor.length === 0) {
+                    wallet.historyItems = items
+                }
+                else {
+                    wallet.historyItems = wallet.historyItems.concat(items)
+                }
+                wallet.historyCursor = (data && data.next_cursor)
+                    ? String(data.next_cursor) : ""
+                wallet.pendingCursor = ""
+                wallet.historyLoading = false
+                wallet.historyLoaded = true
+                wallet.historyError = ""
+            }
         }
 
         function onFailed(op, code, message) {
             if (op === "wallet") {
                 wallet.showError(code, message, op)
+            }
+            else if (op === "wallet_history") {
+                wallet.historyLoading = false
+                wallet.historyError = code ? String(code) : "server_error"
             }
         }
     }
@@ -125,7 +190,7 @@ LegionView {
 
                     delegate: Rectangle {
                         width: parent.width
-                        height: 92
+                        height: 112
                         radius: Theme.radiusM
                         color: Theme.panel
                         border.width: 1
@@ -163,17 +228,23 @@ LegionView {
 
                                 Label {
                                     Layout.alignment: Qt.AlignRight
-                                    text: Theme.money(modelData.balance)
-                                    color: Number(modelData.balance) > 0 ? Theme.text : Theme.warning
-                                    font.pointSize: Theme.fontTitle
+                                    text: qsTr("Основной %1").arg(Theme.money(Api.clubMain(modelData)))
+                                    color: Api.clubMain(modelData) > 0 ? Theme.text : Theme.warning
+                                    font.pointSize: Theme.fontSubtitle
                                     font.bold: true
                                 }
 
                                 Label {
                                     Layout.alignment: Qt.AlignRight
-                                    visible: Number(modelData.bonus || 0) > 0
-                                    text: qsTr("бонус %1").arg(Theme.money(modelData.bonus))
-                                    color: Theme.success
+                                    text: qsTr("Бонус %1").arg(Theme.money(Api.clubBonus(modelData)))
+                                    color: Api.clubBonus(modelData) > 0 ? Theme.success : Theme.textDim
+                                    font.pointSize: Theme.fontSmall
+                                }
+
+                                Label {
+                                    Layout.alignment: Qt.AlignRight
+                                    text: qsTr("Всего %1").arg(Theme.money(Api.clubTotal(modelData)))
+                                    color: Theme.textMuted
                                     font.pointSize: Theme.fontSmall
                                 }
                             }
@@ -192,6 +263,142 @@ LegionView {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // ---- wallet history -----------------------------------------
+            NeonFrame {
+                width: parent.width
+                height: historyColumn.implicitHeight + Theme.spaceXl * 2
+
+                ColumnLayout {
+                    id: historyColumn
+                    anchors.fill: parent
+                    anchors.margins: Theme.spaceXl
+                    spacing: Theme.spaceM
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceM
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("История пополнений")
+                            color: Theme.text
+                            font.pointSize: Theme.fontTitle
+                            font.bold: true
+                        }
+
+                        BusyIndicator {
+                            visible: wallet.historyLoading
+                            running: visible
+                            Layout.preferredWidth: 24
+                            Layout.preferredHeight: 24
+                        }
+
+                        LegionButton {
+                            kind: "ghost"
+                            compact: true
+                            text: qsTr("Обновить")
+                            onClicked: {
+                                wallet.pendingCursor = ""
+                                wallet.loadHistory(true)
+                            }
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: wallet.historyLoaded && wallet.historyItems.length === 0 &&
+                                 wallet.historyError.length === 0
+                        text: qsTr("Пополнений пока нет.")
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontBody
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: wallet.historyError.length > 0
+                        text: qsTr("История временно недоступна. Попробуйте обновить.")
+                        color: Theme.warning
+                        font.pointSize: Theme.fontBody
+                        wrapMode: Text.Wrap
+                    }
+
+                    Repeater {
+                        model: wallet.historyItems
+
+                        delegate: Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 62
+                            radius: Theme.radiusS
+                            color: Theme.panelAlt
+                            border.width: 1
+                            border.color: Theme.line
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.spaceL
+                                anchors.rightMargin: Theme.spaceL
+                                spacing: Theme.spaceM
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: modelData.type === "refund"
+                                              ? qsTr("Возврат платежа")
+                                              : qsTr("Пополнение")
+                                        color: Theme.text
+                                        font.pointSize: Theme.fontSubtitle
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: qsTr("%1 · %2")
+                                            .arg(Theme.dateTimeText(modelData.created_at))
+                                            .arg(wallet.historyClubName(modelData))
+                                        color: Theme.textMuted
+                                        font.pointSize: Theme.fontSmall
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    spacing: 2
+
+                                    Label {
+                                        Layout.alignment: Qt.AlignRight
+                                        text: Theme.money(Api.walletHistoryTotal(modelData))
+                                        color: modelData.type === "refund" ? Theme.warning : Theme.success
+                                        font.pointSize: Theme.fontSubtitle
+                                        font.bold: true
+                                    }
+
+                                    Label {
+                                        Layout.alignment: Qt.AlignRight
+                                        text: qsTr("основной %1 + бонус %2")
+                                            .arg(Theme.money(Api.walletHistoryMain(modelData)))
+                                            .arg(Theme.money(Api.walletHistoryBonus(modelData)))
+                                        color: Theme.textMuted
+                                        font.pointSize: Theme.fontSmall
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    LegionButton {
+                        Layout.alignment: Qt.AlignHCenter
+                        kind: "secondary"
+                        visible: wallet.historyCursor.length > 0
+                        text: qsTr("Показать ещё")
+                        onClicked: wallet.loadMoreHistory()
                     }
                 }
             }

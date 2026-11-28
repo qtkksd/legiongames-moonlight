@@ -49,6 +49,18 @@ class LegionApi : public QObject
     // True while the encrypted one-shot connect material is waiting to be
     // consumed. The material survives page changes and app restarts.
     Q_PROPERTY(bool connectPending READ connectPending NOTIFY connectPendingChanged)
+    // Optional referral code from onboarding or a legiongames://ref/<code>
+    // deep link. It is sent only with the registration consent payload.
+    Q_PROPERTY(QString referralCode READ referralCode NOTIFY referralCodeChanged)
+    // Server timestamps of the account deletion grace period. They survive a
+    // restart through the account vault record so the deletion gate can render
+    // even when the revoked device can no longer call /me.
+    Q_PROPERTY(QString deletionRequestedAt READ deletionRequestedAt NOTIFY deletionStateChanged)
+    Q_PROPERTY(QString purgeAfter READ purgeAfter NOTIFY deletionStateChanged)
+    // Latest optional read models. The generic response(op, data) signal is
+    // still authoritative for views; these properties keep bindings simple.
+    Q_PROPERTY(QVariantMap gamification READ gamification NOTIFY gamificationChanged)
+    Q_PROPERTY(QVariantMap accountSummary READ accountSummary NOTIFY accountSummaryChanged)
 
 public:
     explicit LegionApi(QObject *parent = nullptr);
@@ -71,6 +83,11 @@ public:
     QString netbirdStatus() const { return m_netbirdStatus; }
     QString leaseId() const { return m_leaseId; }
     bool connectPending() const { return m_connectPending; }
+    QString referralCode() const { return m_referralCode; }
+    QString deletionRequestedAt() const { return m_deletionRequestedAt; }
+    QString purgeAfter() const { return m_purgeAfter; }
+    QVariantMap gamification() const { return m_gamification; }
+    QVariantMap accountSummary() const { return m_accountSummary; }
 
     Q_INVOKABLE void initialize();
 
@@ -89,6 +106,12 @@ public:
     Q_INVOKABLE void resetLocalAccount();
     Q_INVOKABLE void checkNetbirdStatus();
     Q_INVOKABLE void deleteAccount(const QString &handle, const QStringList &words);
+    Q_INVOKABLE void restoreAccount(const QString &handle, const QStringList &words);
+
+    Q_INVOKABLE void setReferralCode(const QString &code);
+
+    Q_INVOKABLE void getGamification();
+    Q_INVOKABLE void getAccountSummary();
 
     Q_INVOKABLE void getLegalDocuments();
     Q_INVOKABLE void reissueHandoff(const QString &publicId);
@@ -140,6 +163,10 @@ public:
     // link never credits anything.
     Q_SLOT void notifyPaymentReturn(const QString &publicId);
 
+    // Called by main.cpp for legiongames://ref/<code>. Only pre-fills the
+    // onboarding field; the server validates the code at registration.
+    Q_SLOT void notifyReferralCode(const QString &code);
+
 signals:
     void stateChanged();
     void handleChanged();
@@ -154,6 +181,10 @@ signals:
     void netbirdStatusChanged();
     void leaseIdChanged();
     void connectPendingChanged();
+    void referralCodeChanged();
+    void deletionStateChanged();
+    void gamificationChanged();
+    void accountSummaryChanged();
     void wordsReady(const QString &handle, const QStringList &words);
     void consentRequired();
     void paymentReturned(const QString &publicId);
@@ -226,6 +257,7 @@ private:
 
     void setLeaseId(const QString &leaseId);
     void setConnectPending(bool pending);
+    void setDeletionState(const QString &requestedAt, const QString &purgeAfter);
     void persistConnectMaterial(const QString &sessionId, const QJsonObject &payload);
     QJsonObject loadConnectMaterial();
     void clearStoredConnectMaterial();
@@ -252,6 +284,11 @@ private:
     QString m_catalogUpdatedAt;
     QVariantMap m_device;
     QVariantList m_legalDocuments;
+    QVariantMap m_gamification;
+    QVariantMap m_accountSummary;
+    QString m_referralCode;
+    QString m_deletionRequestedAt;
+    QString m_purgeAfter;
 
     bool m_initialized = false;
     bool m_agreement = false;

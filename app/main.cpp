@@ -829,6 +829,7 @@ int main(int argc, char *argv[])
     QStringList appArguments = app.arguments();
     const bool deepLinkLaunch = DeepLink::isDeepLinkLaunch(appArguments);
     const QString launchPaymentId = DeepLink::paymentIdFromArguments(appArguments);
+    const QString launchReferralCode = DeepLink::referralCodeFromArguments(appArguments);
 
     if (deepLinkLaunch) {
         QStringList filtered;
@@ -850,6 +851,12 @@ int main(int argc, char *argv[])
     if (!launchPaymentId.isEmpty()) {
         if (deepLink.forwardToPrimary(DeepLink::canonicalPaymentUrl(launchPaymentId))) {
             qInfo() << "Forwarded the payment deep link to the running instance";
+            return 0;
+        }
+    }
+    else if (!launchReferralCode.isEmpty()) {
+        if (deepLink.forwardToPrimary(DeepLink::canonicalReferralUrl(launchReferralCode))) {
+            qInfo() << "Forwarded the referral deep link to the running instance";
             return 0;
         }
     }
@@ -1103,6 +1110,8 @@ int main(int argc, char *argv[])
         // make normal launches single-instance.
         QObject::connect(&deepLink, &DeepLink::paymentUrlReceived, &legionApi,
                          &LegionApi::notifyPaymentReturn);
+        QObject::connect(&deepLink, &DeepLink::referralCodeReceived, &legionApi,
+                         &LegionApi::notifyReferralCode);
         if (!deepLink.startPrimary()) {
             qInfo() << "Another Moonlight instance owns the deep-link socket";
         }
@@ -1111,6 +1120,11 @@ int main(int argc, char *argv[])
             // Cold start: the id is queued inside the API until the account is
             // usable, and it only triggers a status poll, never a credit.
             legionApi.notifyPaymentReturn(launchPaymentId);
+        }
+        if (!launchReferralCode.isEmpty()) {
+            // Pre-fills onboarding only; it creates nothing before the signed
+            // registration request.
+            legionApi.notifyReferralCode(launchReferralCode);
         }
 
 #ifdef LG_STAGING_BUILD

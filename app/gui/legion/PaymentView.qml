@@ -94,6 +94,12 @@ LegionView {
         if (params && params.clubId !== undefined) {
             selectedClubId = params.clubId
         }
+        if (params && params.promoCode) {
+            promoCode = String(params.promoCode)
+            if (promoField) {
+                promoField.text = promoCode
+            }
+        }
         stage = "form"
     }
 

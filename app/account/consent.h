@@ -45,11 +45,17 @@ public:
                                     const QList<LegalDocumentInfo> &documents,
                                     const QString &deviceLabel, const QString &appVersion,
                                     const QString &clientAcceptedAt,
-                                    QString *errorCode);
+                                    QString *errorCode,
+                                    const QString &referralCode = QString());
 
     // Exact bytes that are signed. `payload` is sent as a JSON string with the
     // same bytes, so no cross-language canonicalisation is needed.
     static QByteArray signedBytes(const QJsonObject &payload);
+
+    // Registration-only referral attribution. The builder reads the pending
+    // code when the explicit buildPayload argument is empty; callers clear it
+    // after the registration response and before any other consent ceremony.
+    static void setPendingReferralCode(const QString &code);
 
     // True when a stored consent record still matches the current documents.
     static bool isCurrent(const QJsonObject &storedRecord,

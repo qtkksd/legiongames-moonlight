@@ -37,6 +37,11 @@ LegionView {
                                   ? api.suggestedDeviceLabel
                                   : qsTr("Мой компьютер")
 
+    // Optional referral attribution. A deep link pre-fills this value; the
+    // field stays editable and the code is sent only inside the signed
+    // registration consent payload.
+    property string referralCode: (api && api.referralCode) ? String(api.referralCode) : ""
+
     readonly property bool canRegister: !keyLost && agreementChecked && pdnChecked &&
                                         deviceLabel.trim().length > 0 &&
                                         !submitting && !serverBusy
@@ -95,6 +100,9 @@ LegionView {
         clearError()
         submitting = true
         Api.setConsent(api, true, true)
+        if (!Api.setReferralCode(api, referralCode.trim())) {
+            // Older backend: registration still works without attribution.
+        }
         if (!Api.register(api, deviceLabel.trim())) {
             submitting = false
             showError("unsupported_capability", "", "register")
@@ -121,6 +129,16 @@ LegionView {
         function onStateChanged() {
             if (onboarding.appState === "signed_in") {
                 onboarding.submitting = false
+            }
+        }
+
+        function onReferralCodeChanged() {
+            var incoming = onboarding.api ? String(onboarding.api.referralCode || "") : ""
+            if (incoming.length > 0 && incoming !== onboarding.referralCode) {
+                onboarding.referralCode = incoming
+                if (referralField) {
+                    referralField.text = incoming
+                }
             }
         }
     }
@@ -398,6 +416,33 @@ LegionView {
                         onTextChanged: onboarding.deviceLabel = text
                         Keys.onReturnPressed: onboarding.submit()
                         Keys.onEnterPressed: onboarding.submit()
+                    }
+
+                    Label {
+                        text: qsTr("Код приглашения (необязательно)")
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontBody
+                    }
+
+                    TextField {
+                        id: referralField
+                        Layout.fillWidth: true
+                        text: onboarding.referralCode
+                        placeholderText: qsTr("Если друг поделился кодом")
+                        maximumLength: 32
+                        font.pointSize: Theme.fontSubtitle
+                        inputMethodHints: Qt.ImhLatinOnly | Qt.ImhUppercaseOnly
+                        onTextChanged: onboarding.referralCode = text
+                        Keys.onReturnPressed: onboarding.submit()
+                        Keys.onEnterPressed: onboarding.submit()
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Код пригласившего друга начисляет награду после первого пополнения.")
+                        color: Theme.textDim
+                        font.pointSize: Theme.fontSmall
+                        wrapMode: Text.Wrap
                     }
                 }
 

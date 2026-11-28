@@ -21,6 +21,10 @@ LegionView {
     readonly property var queueEntry: shell ? shell.queueEntry : null
     readonly property var wallet: shell ? shell.wallet : []
     readonly property var catalog: shell ? shell.catalog : []
+    readonly property var gamification: shell ? shell.gamification : ({})
+    readonly property var streak: Api.streakOf(gamification)
+    readonly property var personalTasks: Api.personalTasksOf(gamification)
+    readonly property var communityTasks: Api.communityTasksOf(gamification)
     readonly property string updatedAt: shell ? shell.catalogAt : ""
     readonly property bool stale: Theme.isStale(updatedAt.length > 0 ? updatedAt : catalogUpdatedAt)
     readonly property bool offline: appState === "offline"
@@ -37,6 +41,7 @@ LegionView {
     function activate() {
         if (shell) {
             shell.refreshAll(false)
+            shell.refreshGamification(false)
         }
         syncSession()
     }
@@ -443,6 +448,175 @@ LegionView {
                 }
             }
 
+            // ---- daily streak and tasks ---------------------------------
+            Row {
+                width: parent.width
+                spacing: Theme.spaceL
+
+                NeonFrame {
+                    width: (parent.width - Theme.spaceL) / 3
+                    height: streakColumn.implicitHeight + Theme.spaceL * 2
+
+                    ColumnLayout {
+                        id: streakColumn
+                        anchors.fill: parent
+                        anchors.margins: Theme.spaceL
+                        spacing: Theme.spaceXs
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("Серия дней")
+                            color: Theme.textMuted
+                            font.pointSize: Theme.fontSmall
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("%1 %2")
+                                .arg(Number(home.streak.current || 0))
+                                .arg(Theme.plural(Number(home.streak.current || 0),
+                                                  "день", "дня", "дней"))
+                            color: Theme.text
+                            font.pointSize: Theme.fontHeader
+                            font.bold: true
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("Лучшая: %1").arg(Number(home.streak.longest || 0))
+                            color: Theme.textMuted
+                            font.pointSize: Theme.fontSmall
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: home.streak.today_connected === true
+                                  ? qsTr("Сегодня уже играли")
+                                  : qsTr("Сегодня ещё не играли")
+                            color: home.streak.today_connected === true ? Theme.success : Theme.textDim
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.Wrap
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            visible: home.streak.freeze_available === true
+                            text: qsTr("Доступна заморозка серии")
+                            color: Theme.warning
+                            font.pointSize: Theme.fontSmall
+                        }
+                    }
+                }
+
+                NeonFrame {
+                    width: parent.width - ((parent.width - Theme.spaceL) / 3) - Theme.spaceL
+                    height: tasksColumn.implicitHeight + Theme.spaceL * 2
+
+                    ColumnLayout {
+                        id: tasksColumn
+                        anchors.fill: parent
+                        anchors.margins: Theme.spaceL
+                        spacing: Theme.spaceXs
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spaceM
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("Задания")
+                                color: Theme.text
+                                font.pointSize: Theme.fontTitle
+                                font.bold: true
+                            }
+
+                            StatusPill {
+                                text: qsTr("Скоро")
+                                tone: "neutral"
+                            }
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            visible: home.shell !== null &&
+                                     home.shell.gamificationError !== undefined &&
+                                     String(home.shell.gamificationError).length > 0 &&
+                                     home.personalTasks.length === 0 &&
+                                     home.communityTasks.length === 0
+                            text: qsTr("Задания временно недоступны.")
+                            color: Theme.warning
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.Wrap
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            visible: home.personalTasks.length === 0 &&
+                                     home.communityTasks.length === 0
+                            text: qsTr("Ежедневные и общие задания появятся позже. " +
+                                       "Следите за обновлениями.")
+                            color: Theme.textMuted
+                            font.pointSize: Theme.fontSmall
+                            wrapMode: Text.Wrap
+                        }
+
+                        Repeater {
+                            model: home.personalTasks
+
+                            delegate: RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.spaceM
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: modelData.title ? String(modelData.title)
+                                                          : qsTr("Ежедневное задание")
+                                    color: Theme.text
+                                    font.pointSize: Theme.fontSmall
+                                    elide: Text.ElideRight
+                                }
+
+                                Label {
+                                    text: Number(modelData.target || 0) > 0
+                                          ? qsTr("%1 / %2").arg(Number(modelData.progress || 0))
+                                                .arg(Number(modelData.target || 0))
+                                          : qsTr("Личное")
+                                    color: Theme.textMuted
+                                    font.pointSize: Theme.fontSmall
+                                }
+                            }
+                        }
+
+                        Repeater {
+                            model: home.communityTasks
+
+                            delegate: RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.spaceM
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: modelData.title ? String(modelData.title)
+                                                          : qsTr("Общее задание")
+                                    color: Theme.text
+                                    font.pointSize: Theme.fontSmall
+                                    elide: Text.ElideRight
+                                }
+
+                                Label {
+                                    text: Number(modelData.target || 0) > 0
+                                          ? qsTr("%1 / %2").arg(Number(modelData.progress || 0))
+                                                .arg(Number(modelData.target || 0))
+                                          : qsTr("Общее")
+                                    color: Theme.textMuted
+                                    font.pointSize: Theme.fontSmall
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // ---- wallet -------------------------------------------------
             Row {
                 width: parent.width
@@ -502,11 +676,24 @@ LegionView {
                                     elide: Text.ElideRight
                                 }
 
-                                Label {
-                                    text: Theme.money(modelData.balance)
-                                    color: Number(modelData.balance) > 0 ? Theme.text : Theme.warning
-                                    font.pointSize: Theme.fontSmall
-                                    font.bold: true
+                                ColumnLayout {
+                                    spacing: 0
+
+                                    Label {
+                                        Layout.alignment: Qt.AlignRight
+                                        text: Theme.money(Api.clubMain(modelData))
+                                        color: Api.clubMain(modelData) > 0 ? Theme.text : Theme.warning
+                                        font.pointSize: Theme.fontSmall
+                                        font.bold: true
+                                    }
+
+                                    Label {
+                                        Layout.alignment: Qt.AlignRight
+                                        visible: Api.clubBonus(modelData) > 0
+                                        text: qsTr("+ бонус %1").arg(Theme.money(Api.clubBonus(modelData)))
+                                        color: Theme.success
+                                        font.pointSize: Theme.fontSmall
+                                    }
                                 }
                             }
                         }

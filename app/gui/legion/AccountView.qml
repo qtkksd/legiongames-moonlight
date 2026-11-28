@@ -17,6 +17,16 @@ LegionView {
     readonly property bool reprintAvailable: Api.hasReprintRecoveryKit(api)
     property bool kitSaved: false
     property string kitSavedPath: ""
+    property string copiedText: ""
+    readonly property var gamification: shell ? shell.gamification : ({})
+    readonly property var summary: shell ? shell.accountSummary : ({})
+    readonly property var streak: Api.streakOf(gamification)
+    readonly property var achievements: Api.achievementsOf(gamification)
+    readonly property var achievementItems: Api.achievementItems(gamification)
+    readonly property var rewards: Api.rewardsOf(gamification)
+    readonly property var referral: Api.referralOf(gamification)
+    readonly property bool hasReferralCode: referral.code !== undefined &&
+                                            String(referral.code).length > 0
     // `device` is a notifyable backend property: read it in the binding so the
     // card updates when the label or version changes.
     readonly property var device: (api && api.device) ? api.device : null
@@ -29,9 +39,44 @@ LegionView {
         Api.refreshMe(api)
         if (shell) {
             shell.refreshWallet()
+            shell.refreshGamification(false)
+            shell.refreshAccountSummary(false)
         }
         kitSaved = false
+        copiedText = ""
         clearError()
+    }
+
+    function copyValue(value) {
+        var text = value ? String(value) : ""
+        if (text.length === 0) {
+            return
+        }
+        clipboardHelper.text = text
+        clipboardHelper.selectAll()
+        clipboardHelper.copy()
+        copiedText = text
+        copiedTimer.restart()
+    }
+
+    function shareReferral() {
+        if (!account.hasReferralCode) {
+            return
+        }
+        var link = referral.link ? String(referral.link) : ""
+        var text = qsTr("Играй со мной в LegionGames. Мой код: %1")
+            .arg(String(referral.code))
+        var url = "https://t.me/share/url?url=" + encodeURIComponent(link) +
+                  "&text=" + encodeURIComponent(text)
+        account.openUrl(url)
+    }
+
+    function useReward(code) {
+        if (!code) {
+            return
+        }
+        account.go("qrc:/gui/legion/PaymentView.qml",
+                   { promoCode: String(code) })
     }
 
     function focusFirst() {
@@ -82,6 +127,19 @@ LegionView {
             account.kitSaved = true
             account.kitSavedPath = path ? String(path) : ""
         }
+    }
+
+    TextEdit {
+        id: clipboardHelper
+        visible: false
+        width: 0
+        height: 0
+    }
+
+    Timer {
+        id: copiedTimer
+        interval: 1600
+        onTriggered: account.copiedText = ""
     }
 
     PageHeader {
@@ -202,6 +260,532 @@ LegionView {
                 detail: account.serverError
                 canRetry: true
                 onRetry: account.activate()
+            }
+
+            // ---- progress summary --------------------------------------
+            NeonFrame {
+                width: parent.width
+                height: progressColumn.implicitHeight + Theme.spaceXl * 2
+                highlighted: true
+                flicker: true
+
+                ColumnLayout {
+                    id: progressColumn
+                    anchors.fill: parent
+                    anchors.margins: Theme.spaceXl
+                    spacing: Theme.spaceM
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceM
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("Прогресс")
+                            color: Theme.text
+                            font.pointSize: Theme.fontTitle
+                            font.bold: true
+                        }
+
+                        StatusPill {
+                            text: qsTr("Серия: %1").arg(Number(account.streak.current || 0))
+                            tone: Number(account.streak.current || 0) > 0 ? "good" : "neutral"
+                        }
+
+                        StatusPill {
+                            text: qsTr("Достижения: %1 / %2")
+                                .arg(Number(account.achievements.total_earned || 0))
+                                .arg(Number(account.achievements.total_count || 0))
+                            tone: "accent"
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceXl
+
+                        ColumnLayout {
+                            spacing: 0
+
+                            Label {
+                                text: qsTr("На балансе")
+                                color: Theme.textMuted
+                                font.pointSize: Theme.fontSmall
+                            }
+
+                            Label {
+                                text: account.summary.wallet_total !== undefined
+                                      ? Theme.money(account.summary.wallet_total)
+                                      : (account.shell ? Theme.money(Api.totalBalance(account.shell.wallet)) : Theme.money(0))
+                                color: Theme.text
+                                font.pointSize: Theme.fontTitle
+                                font.bold: true
+                            }
+                        }
+
+                        ColumnLayout {
+                            spacing: 0
+
+                            Label {
+                                text: qsTr("Всего пополнено")
+                                color: Theme.textMuted
+                                font.pointSize: Theme.fontSmall
+                            }
+
+                            Label {
+                                text: Theme.money(account.summary.total_deposited || 0)
+                                color: Theme.text
+                                font.pointSize: Theme.fontTitle
+                                font.bold: true
+                            }
+                        }
+
+                        ColumnLayout {
+                            spacing: 0
+
+                            Label {
+                                text: qsTr("Активные сессии")
+                                color: Theme.textMuted
+                                font.pointSize: Theme.fontSmall
+                            }
+
+                            Label {
+                                text: String(Number(account.summary.active_session_count || 0))
+                                color: Theme.text
+                                font.pointSize: Theme.fontTitle
+                                font.bold: true
+                            }
+                        }
+
+                        ColumnLayout {
+                            spacing: 0
+
+                            Label {
+                                text: qsTr("Награды")
+                                color: Theme.textMuted
+                                font.pointSize: Theme.fontSmall
+                            }
+
+                            Label {
+                                text: String(Number(account.summary.unused_reward_count || 0))
+                                color: Theme.text
+                                font.pointSize: Theme.fontTitle
+                                font.bold: true
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: account.streak.today_connected === true
+                        text: qsTr("Сегодняшний день уже засчитан в серию.")
+                        color: Theme.success
+                        font.pointSize: Theme.fontSmall
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: account.streak.freeze_available === true
+                        text: qsTr("Доступна заморозка серии на пропущенный день.")
+                        color: Theme.warning
+                        font.pointSize: Theme.fontSmall
+                    }
+                }
+            }
+
+            // ---- achievements -----------------------------------------
+            NeonFrame {
+                width: parent.width
+                height: achievementColumn.implicitHeight + Theme.spaceXl * 2
+
+                ColumnLayout {
+                    id: achievementColumn
+                    anchors.fill: parent
+                    anchors.margins: Theme.spaceXl
+                    spacing: Theme.spaceM
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("Достижения")
+                            color: Theme.text
+                            font.pointSize: Theme.fontTitle
+                            font.bold: true
+                        }
+
+                        Label {
+                            text: qsTr("Получено %1 из %2")
+                                .arg(Number(account.achievements.total_earned || 0))
+                                .arg(Number(account.achievements.total_count || 0))
+                            color: Theme.textMuted
+                            font.pointSize: Theme.fontSmall
+                        }
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: shell !== null && shell.gamificationError !== undefined &&
+                                 String(shell.gamificationError).length > 0
+                        text: qsTr("Достижения и награды временно недоступны. Обновите страницу позже.")
+                        color: Theme.warning
+                        font.pointSize: Theme.fontSmall
+                        wrapMode: Text.Wrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: account.achievementItems.length === 0
+                        text: qsTr("Достижений пока нет. Играйте, пополняйте баланс и " +
+                                   "заходите каждый день.")
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontBody
+                        wrapMode: Text.Wrap
+                    }
+
+                    Repeater {
+                        model: account.achievementItems
+
+                        delegate: ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spaceXs
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.spaceM
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: modelData.title ? String(modelData.title)
+                                                          : qsTr("Достижение")
+                                    color: Theme.text
+                                    font.pointSize: Theme.fontSubtitle
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                }
+
+                                StatusPill {
+                                    visible: modelData.category !== undefined &&
+                                             String(modelData.category).length > 0
+                                    text: modelData.category ? String(modelData.category) : ""
+                                    tone: "neutral"
+                                }
+
+                                Label {
+                                    visible: Api.isAchievementEarned(modelData)
+                                    text: Theme.dateTimeText(modelData.earned_at)
+                                    color: Theme.success
+                                    font.pointSize: Theme.fontSmall
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 6
+                                radius: 3
+                                color: Theme.panelAlt
+                                visible: !Api.isAchievementEarned(modelData) &&
+                                         Number(modelData.target || 0) > 0
+
+                                Rectangle {
+                                    width: parent.width * Api.achievementProgress(modelData)
+                                    height: parent.height
+                                    radius: 3
+                                    color: Theme.accent
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.spaceM
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: Api.achievementProgressText(modelData)
+                                    color: Theme.textMuted
+                                    font.pointSize: Theme.fontSmall
+                                }
+
+                                SelectableText {
+                                    visible: Api.isAchievementEarned(modelData) &&
+                                             modelData.reward_code !== undefined &&
+                                             modelData.reward_code !== null &&
+                                             String(modelData.reward_code).length > 0
+                                    text: modelData.reward_code ? String(modelData.reward_code) : ""
+                                    color: Theme.success
+                                    font.pointSize: Theme.fontSmall
+                                    font.family: "monospace"
+                                    wrapMode: TextEdit.NoWrap
+                                }
+
+                                LegionButton {
+                                    kind: "ghost"
+                                    compact: true
+                                    visible: modelData.reward_code !== undefined &&
+                                             modelData.reward_code !== null &&
+                                             String(modelData.reward_code).length > 0
+                                    text: account.copiedText === String(modelData.reward_code)
+                                          ? qsTr("Скопировано")
+                                          : qsTr("Копировать")
+                                    onClicked: account.copyValue(modelData.reward_code)
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 1
+                                color: Theme.line
+                                visible: index < account.achievementItems.length - 1
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- referral ----------------------------------------------
+            NeonFrame {
+                width: parent.width
+                height: referralColumn.implicitHeight + Theme.spaceXl * 2
+
+                ColumnLayout {
+                    id: referralColumn
+                    anchors.fill: parent
+                    anchors.margins: Theme.spaceXl
+                    spacing: Theme.spaceM
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Пригласи друга")
+                        color: Theme.text
+                        font.pointSize: Theme.fontTitle
+                        font.bold: true
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Друг вводит ваш код при создании аккаунта. Награда придёт " +
+                                   "после его первого пополнения.")
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontBody
+                        wrapMode: Text.Wrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: !account.hasReferralCode
+                        text: qsTr("Код появится после создания аккаунта.")
+                        color: Theme.textDim
+                        font.pointSize: Theme.fontBody
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceM
+                        visible: account.hasReferralCode
+
+                        SelectableText {
+                            Layout.fillWidth: true
+                            text: String(account.referral.code)
+                            color: Theme.accent
+                            font.pointSize: Theme.fontHeader
+                            font.bold: true
+                            font.family: "monospace"
+                            wrapMode: TextEdit.NoWrap
+                        }
+
+                        StatusPill {
+                            text: qsTr("Ожидают: %1").arg(Number(account.referral.pending || 0))
+                            tone: "warn"
+                        }
+
+                        StatusPill {
+                            text: qsTr("Награждены: %1").arg(Number(account.referral.rewarded || 0))
+                            tone: "good"
+                        }
+                    }
+
+                    SelectableText {
+                        Layout.fillWidth: true
+                        visible: account.hasReferralCode &&
+                                 account.referral.link !== undefined &&
+                                 String(account.referral.link).length > 0
+                        text: account.referral.link ? String(account.referral.link) : ""
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontSmall
+                        wrapMode: TextEdit.WrapAnywhere
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceM
+                        visible: account.hasReferralCode
+
+                        LegionButton {
+                            kind: "secondary"
+                            compact: true
+                            text: account.copiedText === String(account.referral.code)
+                                  ? qsTr("Код скопирован")
+                                  : qsTr("Копировать код")
+                            onClicked: account.copyValue(account.referral.code)
+                        }
+
+                        LegionButton {
+                            kind: "secondary"
+                            compact: true
+                            visible: account.referral.link !== undefined &&
+                                     String(account.referral.link).length > 0
+                            text: qsTr("Копировать ссылку")
+                            onClicked: account.copyValue(account.referral.link)
+                        }
+
+                        LegionButton {
+                            kind: "secondary"
+                            compact: true
+                            text: qsTr("Поделиться")
+                            onClicked: account.shareReferral()
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+                }
+            }
+
+            // ---- rewards -----------------------------------------------
+            NeonFrame {
+                width: parent.width
+                height: rewardsColumn.implicitHeight + Theme.spaceXl * 2
+
+                ColumnLayout {
+                    id: rewardsColumn
+                    anchors.fill: parent
+                    anchors.margins: Theme.spaceXl
+                    spacing: Theme.spaceS
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Награды")
+                        color: Theme.text
+                        font.pointSize: Theme.fontTitle
+                        font.bold: true
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Код можно скопировать или сразу подставить при пополнении.")
+                        color: Theme.textMuted
+                        font.pointSize: Theme.fontBody
+                        wrapMode: Text.Wrap
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        visible: account.rewards.length === 0
+                        text: qsTr("Наград пока нет.")
+                        color: Theme.textDim
+                        font.pointSize: Theme.fontBody
+                    }
+
+                    Repeater {
+                        model: account.rewards
+
+                        delegate: ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.spaceXs
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.spaceM
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 1
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: modelData.title ? String(modelData.title)
+                                                              : qsTr("Награда")
+                                        color: modelData.used === true ? Theme.textMuted : Theme.text
+                                        font.pointSize: Theme.fontSubtitle
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            var parts = []
+                                            if (modelData.source) {
+                                                parts.push(String(modelData.source))
+                                            }
+                                            if (modelData.expires_at) {
+                                                parts.push(qsTr("до %1")
+                                                    .arg(Theme.dateTimeText(modelData.expires_at)))
+                                            }
+                                            return parts.join(" · ")
+                                        }
+                                        color: Theme.textMuted
+                                        font.pointSize: Theme.fontSmall
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                Label {
+                                    text: Api.rewardValueText(modelData)
+                                    color: modelData.used === true ? Theme.textDim : Theme.success
+                                    font.pointSize: Theme.fontSubtitle
+                                    font.bold: true
+                                }
+
+                                StatusPill {
+                                    text: modelData.used === true ? qsTr("Использована")
+                                                                  : qsTr("Активна")
+                                    tone: modelData.used === true ? "neutral" : "good"
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.spaceM
+
+                                SelectableText {
+                                    Layout.fillWidth: true
+                                    text: modelData.code ? String(modelData.code) : ""
+                                    color: modelData.used === true ? Theme.textDim : Theme.text
+                                    font.pointSize: Theme.fontSmall
+                                    font.family: "monospace"
+                                    wrapMode: TextEdit.NoWrap
+                                }
+
+                                LegionButton {
+                                    kind: "ghost"
+                                    compact: true
+                                    text: account.copiedText === String(modelData.code)
+                                          ? qsTr("Скопировано")
+                                          : qsTr("Копировать")
+                                    onClicked: account.copyValue(modelData.code)
+                                }
+
+                                LegionButton {
+                                    kind: "secondary"
+                                    compact: true
+                                    visible: modelData.used !== true
+                                    text: qsTr("Использовать при пополнении")
+                                    onClicked: account.useReward(modelData.code)
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 1
+                                color: Theme.line
+                                visible: index < account.rewards.length - 1
+                            }
+                        }
+                    }
+                }
             }
 
             Rectangle {

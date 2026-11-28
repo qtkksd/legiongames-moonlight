@@ -15,7 +15,8 @@
 //   reissueHandoff, startSession, getCurrentSession, stopSession,
 //   reconnectSession, connectSession, resumeConnectMaterial,
 //   clearConnectMaterial, getQueue, joinQueue,
-//   leaveQueue, claimQueue,
+//   leaveQueue, claimQueue, getGamification, getAccountSummary,
+//   setReferralCode, restoreAccount,
 //   getLegalDocuments, deleteAccount, openExternal, openLogFolder,
 //   retryFailedStep
 // Signals consumed by views:
@@ -27,9 +28,10 @@
 //   clubs, club, wallet, topup, intent, handoff, session_start,
 //   session_current, session_stop, session_reconnect, queue,
 //   queue_join, queue_leave, queue_claim, confirm_words, refresh_me,
-//   account_delete, legal_documents, kit, open_logs
-// getWalletHistory / `wallet_history` exists on the backend but has no UI
-// section yet: the ledger item schema is not part of Contract v1.4.
+//   account_delete, account_restore, gamification, account_summary,
+//   wallet_history, legal_documents, kit, open_logs
+// Wallet history rows are rendered by WalletView; main/bonus are derived from
+// the explicit split when present, otherwise from amount - bonus.
 
 var staleSeconds = 600
 
@@ -152,6 +154,23 @@ function refreshMe(api) {
     return call0(api, "refreshMe")
 }
 
+// Optional referral code typed in onboarding or received from a
+// legiongames://ref/<code> deep link. The backend only attaches it to the
+// signed registration consent payload.
+function setReferralCode(api, code) {
+    return call1(api, "setReferralCode", code ? String(code) : "")
+}
+
+function hasRestoreAccount(api) {
+    return has(api, "restoreAccount")
+}
+
+// Cancels a scheduled deletion. The ceremony uses the existing device key and
+// the eight recovery words; the server revokes/restores as needed.
+function restoreAccount(api, handle, words) {
+    return call2(api, "restoreAccount", handle, words)
+}
+
 // ---- legal documents ----------------------------------------------------
 
 function getLegalDocuments(api) {
@@ -172,6 +191,18 @@ function getClub(api, slug) {
 
 function getWallet(api) {
     return call0(api, "getWallet")
+}
+
+function getWalletHistory(api, cursor) {
+    return call1(api, "getWalletHistory", cursor ? String(cursor) : "")
+}
+
+function getGamification(api) {
+    return call0(api, "getGamification")
+}
+
+function getAccountSummary(api) {
+    return call0(api, "getAccountSummary")
 }
 
 function createTopup(api, clubId, amount, promoCode) {
@@ -392,7 +423,34 @@ function walletFor(walletClubs, id) {
 
 function balanceFor(walletClubs, id) {
     var row = walletFor(walletClubs, id)
-    return row ? Number(row.balance) : 0
+    return row ? clubTotal(row) : 0
+}
+
+// The server may expose the refundable main part explicitly. Older payloads
+// carry `balance` as the whole club balance and `bonus` as the non-refundable
+// part, so main = balance - bonus in that case.
+function clubMain(row) {
+    if (!row) {
+        return 0
+    }
+    if (row.main !== undefined && row.main !== null) {
+        return Number(row.main)
+    }
+    return Math.max(0, Number(row.balance || 0) - Number(row.bonus || 0))
+}
+
+function clubBonus(row) {
+    return row ? Number(row.bonus || 0) : 0
+}
+
+function clubTotal(row) {
+    if (!row) {
+        return 0
+    }
+    if (row.total !== undefined && row.total !== null) {
+        return Number(row.total)
+    }
+    return clubMain(row) + clubBonus(row)
 }
 
 function totalBalance(walletClubs) {
@@ -401,9 +459,114 @@ function totalBalance(walletClubs) {
         return total
     }
     for (var i = 0; i < walletClubs.length; i++) {
-        total += Number(walletClubs[i].balance || 0)
+        total += clubTotal(walletClubs[i])
     }
     return total
+}
+
+// ---- gamification and account summary -----------------------------------
+
+function streakOf(data) {
+    return data && data.streak ? data.streak : ({})
+}
+
+function achievementsOf(data) {
+    return data && data.achievements ? data.achievements : ({})
+}
+
+function achievementItems(data) {
+    var achievements = achievementsOf(data)
+    return achievements.items ? achievements.items : []
+}
+
+function tasksOf(data) {
+    return data && data.tasks ? data.tasks : ({})
+}
+
+function personalTasksOf(data) {
+    var tasks = tasksOf(data)
+    return tasks.personal ? tasks.personal : []
+}
+
+function communityTasksOf(data) {
+    var tasks = tasksOf(data)
+    return tasks.community ? tasks.community : []
+}
+
+function rewardsOf(data) {
+    return data && data.rewards ? data.rewards : []
+}
+
+function referralOf(data) {
+    return data && data.referral ? data.referral : ({})
+}
+
+function summaryOf(data) {
+    return data ? data : ({})
+}
+
+function isAchievementEarned(item) {
+    return item && item.earned_at !== null && item.earned_at !== undefined &&
+           String(item.earned_at).length > 0
+}
+
+function achievementProgress(item) {
+    if (!item) {
+        return 0
+    }
+    var target = Number(item.target || 0)
+    if (target <= 0) {
+        return isAchievementEarned(item) ? 1 : 0
+    }
+    return Math.max(0, Math.min(1, Number(item.progress || 0) / target))
+}
+
+function achievementProgressText(item) {
+    if (!item) {
+        return ""
+    }
+    var target = Number(item.target || 0)
+    if (target <= 0) {
+        return isAchievementEarned(item) ? "Получено" : ""
+    }
+    return Math.min(Number(item.progress || 0), target) + " / " + target
+}
+
+function rewardValueText(reward) {
+    if (!reward) {
+        return ""
+    }
+    if (reward.amount !== undefined && reward.amount !== null && Number(reward.amount) > 0) {
+        return Number(reward.amount).toFixed(2).replace(".", ",") + " ₽"
+    }
+    if (reward.percent !== undefined && reward.percent !== null && Number(reward.percent) > 0) {
+        return "+" + Number(reward.percent) + "%"
+    }
+    return ""
+}
+
+function walletHistoryMain(item) {
+    if (!item) {
+        return 0
+    }
+    if (item.main !== undefined && item.main !== null) {
+        return Number(item.main)
+    }
+    return Math.max(0, Number(item.amount || 0) - Number(item.bonus || 0))
+}
+
+function walletHistoryBonus(item) {
+    return item ? Number(item.bonus || 0) : 0
+}
+
+function walletHistoryTotal(item) {
+    if (!item) {
+        return 0
+    }
+    if (item.total !== undefined && item.total !== null) {
+        return Number(item.total)
+    }
+    return walletHistoryMain(item) + walletHistoryBonus(item)
 }
 
 function sortClubs(clubs) {
@@ -772,6 +935,21 @@ function errorText(code, message) {
     case "control_required":
         text = "Для этого действия нужны слова восстановления."
         break
+    case "invalid_recovery":
+        text = "Имя аккаунта или слова восстановления не подходят."
+        break
+    case "deletion_invalid":
+        text = "Введите имя аккаунта и все восемь слов."
+        break
+    case "account_not_deletion_pending":
+        text = "Аккаунт не ожидает удаления. Обновите состояние."
+        break
+    case "account_deletion_pending":
+        text = "Аккаунт ожидает удаления. Восстановите его или дождитесь срока."
+        break
+    case "invalid_signature":
+        text = "Не удалось подтвердить устройство. Повторите попытку."
+        break
     case "recovery_ticket_invalid":
         text = "Ссылка восстановления недействительна. Начните заново."
         break
@@ -873,6 +1051,14 @@ function opTitle(op) {
         return "Кошелёк"
     case "wallet_history":
         return "История пополнений"
+    case "gamification":
+        return "Достижения и награды"
+    case "account_summary":
+        return "Сводка аккаунта"
+    case "account_restore":
+        return "Восстановление аккаунта"
+    case "referral":
+        return "Приглашение друга"
     case "topup":
     case "intent":
         return "Пополнение"
