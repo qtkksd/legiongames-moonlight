@@ -54,6 +54,15 @@ Item {
         }
     }
 
+    readonly property bool windowActive: {
+        try {
+            return window.active === true
+        }
+        catch (error) {
+            return true
+        }
+    }
+
     // True once the account bootstrap has reached a terminal or onboarding
     // state. The splash waits for this instead of flashing the checking gate.
     readonly property bool startupSettled: appState.length > 0 &&
@@ -150,7 +159,9 @@ Item {
 
     // Optional account read models (gamification, aggregate summary). They
     // never block the main flows; a missing endpoint leaves an empty model and
-    // the views render their safe stub state.
+    // the views render their safe stub state. Both are re-read through
+    // refreshAccountModels() on session, queue and deposit transitions and on
+    // window resume; no view duplicates award logic.
     property var gamification: ({})
     property var accountSummary: ({})
     property double gamificationFetchedAt: 0
@@ -359,6 +370,26 @@ Item {
         return true
     }
 
+    // The gamification read model and the aggregate account summary change
+    // together on every lifecycle transition (session, queue, deposit). Both
+    // reads are optional and guarded, so a burst of server signals collapses
+    // into at most one request per endpoint.
+    function refreshAccountModels(force) {
+        refreshGamification(force === true)
+        refreshAccountSummary(force === true)
+    }
+
+    // Foreground reconciliation: a minimized, background or unfocused window
+    // keeps the last snapshots. Re-read with the normal TTL guards instead of
+    // adding another global polling timer.
+    function refreshOnResume() {
+        if (mode !== "app") {
+            return
+        }
+        refreshAll(false)
+        refreshAccountModels(false)
+    }
+
     function clubById(id) {
         return queryStore.clubById(id)
     }
@@ -387,8 +418,7 @@ Item {
             showSection("home")
         }
         refreshAll(true)
-        refreshGamification(true)
-        refreshAccountSummary(true)
+        refreshAccountModels(true)
     }
 
     function syncWords() {
@@ -550,7 +580,17 @@ Item {
                 }
                 shell.sessionInFlight = false
                 shell.sessionFetchedAt = Date.now()
+                var previousSessionStatus = shell.session ? String(shell.session.status || "") : ""
                 shell.session = Api.sessionOf(data)
+                var nextSessionStatus = shell.session ? String(shell.session.status || "") : ""
+                if (previousSessionStatus !== nextSessionStatus &&
+                        (nextSessionStatus === "" || nextSessionStatus === "expired" ||
+                         nextSessionStatus === "stopped")) {
+                    // The lease ended server-side (expiry, zero balance or
+                    // revocation). Disconnect rewards and the summary are now
+                    // stale even though no page mutation reported it.
+                    shell.refreshAccountModels(false)
+                }
                 if (shell.sessionDirty) {
                     shell.sessionDirty = false
                     shell.refreshSession(true)
@@ -573,11 +613,16 @@ Item {
                 // check above.
                 shell.loadCatalog(false, true)
                 shell.refreshWallet(true)
+                shell.refreshAccountModels(true)
             }
             else if (op === "session_connect") {
                 // The payload itself is handled by onConnectMaterialReady, not
                 // by this broadcast router: a page cannot consume the one-shot
-                // material even if it is the only listener left.
+                // material even if it is the only listener left. The material
+                // does not change rewards yet; activation does, and is picked
+                // up by onLegionConnectSucceeded below. This cheap guarded read
+                // keeps the cards fresh if activation already happened.
+                shell.refreshAccountModels(false)
             }
             else if (op === "queue") {
                 if (shell.queueReadMutationSeq !== shell.queueMutationSeq) {
@@ -590,7 +635,17 @@ Item {
                 shell.queueInFlight = false
                 shell.queuePollInterval = 5000
                 shell.queueFetchedAt = Date.now()
+                var previousQueueStatus = shell.queueEntry ? String(shell.queueEntry.status || "") : ""
                 shell.queueEntry = Api.entryOf(data)
+                var nextQueueStatus = shell.queueEntry ? String(shell.queueEntry.status || "") : ""
+                if (previousQueueStatus !== nextQueueStatus &&
+                        (nextQueueStatus === "" || nextQueueStatus === "notified" ||
+                         nextQueueStatus === "claimed" || nextQueueStatus === "expired" ||
+                         nextQueueStatus === "left")) {
+                    // Promotion, expiry or removal discovered by polling instead
+                    // of SSE. Queue rewards and the summary may have changed.
+                    shell.refreshAccountModels(false)
+                }
                 if (shell.queueDirty) {
                     shell.queueDirty = false
                     shell.refreshQueue(true)
@@ -602,6 +657,7 @@ Item {
                 shell.queueFetchedAt = Date.now()
                 shell.queueEntry = Api.entryOf(data)
                 shell.loadCatalog(false, true)
+                shell.refreshAccountModels(true)
             }
             else if (op === "queue_claim") {
                 // Claim creates a session and clears the queue entry in one
@@ -616,6 +672,17 @@ Item {
                 shell.session = Api.sessionOf(data)
                 shell.loadCatalog(false, true)
                 shell.refreshWallet(true)
+                shell.refreshAccountModels(true)
+            }
+            else if (op === "intent") {
+                var intentStatus = Api.intentStatusOf(data)
+                if (intentStatus === "succeeded" || intentStatus === "refunded") {
+                    // A confirmed deposit credits the wallet and emits the
+                    // add_funds/referral rewards server-side. PaymentView owns
+                    // the result screen; the shell owns the shared caches.
+                    shell.refreshWallet(true)
+                    shell.refreshAccountModels(true)
+                }
             }
             else if (op === "session_history") {
                 shell.sessionHistory = (data && data.sessions) ? data.sessions : []
@@ -640,8 +707,7 @@ Item {
                 // The restore response already carries fresh tokens. Refresh
                 // every projection instead of trusting a local timer.
                 shell.refreshAll(true)
-                shell.refreshGamification(true)
-                shell.refreshAccountSummary(true)
+                shell.refreshAccountModels(true)
             }
         }
 
@@ -704,13 +770,22 @@ Item {
                 }
             }
             if (op === "session_current" && code === "not_found" && !sessionReadStale) {
-                // No active session is a normal answer, not an error.
+                // No active session is a normal answer, not an error. If one
+                // just disappeared, its disconnect rewards are now pending.
+                var hadSession = shell.session !== null
                 shell.session = null
                 shell.sessionFetchedAt = Date.now()
+                if (hadSession) {
+                    shell.refreshAccountModels(false)
+                }
             }
             else if (op === "queue" && code === "not_found") {
+                var hadQueueEntry = shell.queueEntry !== null
                 shell.queueEntry = null
                 shell.queueFetchedAt = Date.now()
+                if (hadQueueEntry) {
+                    shell.refreshAccountModels(false)
+                }
             }
         }
 
@@ -738,6 +813,7 @@ Item {
                 // A reconnect may have missed hints. Refresh everything from
                 // the authoritative endpoints instead of replaying events.
                 shell.refreshAll(true)
+                shell.refreshAccountModels(true)
                 return
             }
             // SSE is a hint to refresh the authoritative projections. Never
@@ -747,6 +823,7 @@ Item {
                     name === "expired" || name === "left") {
                 shell.refreshSession(true)
                 shell.refreshWallet(true)
+                shell.refreshAccountModels(true)
             }
         }
 
@@ -817,10 +894,27 @@ Item {
 
         function onLegionConnectSucceeded() {
             // The material has been consumed by the server and applied by the
-            // client; nothing to resume.
+            // client; nothing to resume. Activation starts billing and emits
+            // the connection_activated rewards, so the cards must re-read.
             Api.clearConnectMaterial(shell.api)
             shell.refreshSession(true)
             shell.refreshWallet(true)
+            shell.refreshAccountModels(true)
+        }
+    }
+
+    // Foreground reconciliation. `windowVisible` catches minimize/restore and
+    // `windowActive` catches focus loss/return (for example, the payment
+    // browser). Both go through the TTL guards, so a quick alt-tab is free.
+    onWindowVisibleChanged: {
+        if (windowVisible) {
+            shell.refreshOnResume()
+        }
+    }
+
+    onWindowActiveChanged: {
+        if (windowActive) {
+            shell.refreshOnResume()
         }
     }
 
