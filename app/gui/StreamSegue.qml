@@ -47,6 +47,32 @@ Item {
 
         // Hide the window now that streaming has begun
         window.visible = false
+
+        reportHealthEvent("reportStreamStarted")
+    }
+
+    // Forwards stream lifecycle events to the lease health agent. The agent
+    // only updates its state and wakes its own worker; no network I/O runs on
+    // the SDL/QML thread.
+    function reportHealthEvent(method)
+    {
+        if (leaseId.length === 0) {
+            return
+        }
+        try {
+            if (typeof legionApi !== "undefined" && legionApi &&
+                    typeof legionApi[method] === "function") {
+                legionApi[method]()
+            }
+        }
+        catch (error) {
+            console.warn("Cannot report " + method + ":", error)
+        }
+    }
+
+    function reportFirstFrame()
+    {
+        reportHealthEvent("reportFirstFrame")
     }
 
     function displayLaunchError(text)
@@ -65,6 +91,10 @@ Item {
             return
         }
         leaseEnded = true
+
+        // Announce the end before stopping the reporter or the lease so the
+        // final sample carries phase=stopping and the stream end event.
+        reportHealthEvent("reportStreamEnded")
 
         ComputerManager.stopLegionConnect()
 
@@ -155,6 +185,7 @@ Item {
         session.quitStarting.connect(quitStarting)
         session.sessionFinished.connect(sessionFinished)
         session.readyForDeletion.connect(sessionReadyForDeletion)
+        session.firstFrameRendered.connect(reportFirstFrame)
 
         // Ensure the SystemProperties async thread is finished,
         // since it may currently be using the SDL video subsystem

@@ -188,6 +188,13 @@ Item {
     property bool recoveryVisible: false
     property bool reconsentVisible: false
 
+    // Lease health banner (outside the stream). The health agent delivers
+    // notices asynchronously; StreamSegue displays the same notices in-stream
+    // through the SDL overlay. This is server copy, never a local timer.
+    property var healthNotice: null
+    property string healthNoticeAction: ""
+    property string healthNoticeCode: ""
+
     // Written recovery kit file (recoveryKitWritten signal)
     property string kitPath: ""
     property bool kitInSyncedFolder: false
@@ -432,6 +439,182 @@ Item {
         }
     }
 
+    // ---- lease health banner -------------------------------------------
+
+    function healthNoticeTitle(code) {
+        if (code === "low_balance") {
+            return qsTr("Баланс заканчивается")
+        }
+        if (code === "club_closing") {
+            return qsTr("Клуб закрывается")
+        }
+        if (code === "session_ending") {
+            return qsTr("Сессия завершается")
+        }
+        return qsTr("Сообщение сервера")
+    }
+
+    function healthNoticeText(code, notice) {
+        var text = notice && notice.message ? String(notice.message) : ""
+        if (text.length > 0) {
+            return text
+        }
+        var minutes = notice ? Number(notice.minutes_left || 0) : 0
+        if (code === "low_balance") {
+            return minutes > 0
+                ? qsTr("Пополните счёт, иначе сессия завершится через %1 мин.").arg(minutes)
+                : qsTr("Пополните баланс, иначе сессия завершится.")
+        }
+        if (code === "club_closing") {
+            return qsTr("Клуб скоро закроется. Завершите текущий матч.")
+        }
+        if (code === "session_ending") {
+            return qsTr("Сессия скоро завершится.")
+        }
+        return qsTr("Проверьте состояние сессии.")
+    }
+
+    function showHealthNotice(code, notice) {
+        if (!notice) {
+            return
+        }
+        var noticeCode = code ? String(code) : String(notice.code || "")
+        var action = ""
+        var actionText = ""
+        if (noticeCode === "low_balance") {
+            action = "wallet"
+            actionText = qsTr("Пополнить")
+        }
+        else if (noticeCode === "club_closing" ||
+                 noticeCode === "session_ending") {
+            action = "session"
+            actionText = qsTr("К сессии")
+        }
+        healthNotice = {
+            tone: noticeCode === "session_ending" ? "danger" : "warning",
+            title: healthNoticeTitle(noticeCode),
+            text: healthNoticeText(noticeCode, notice),
+            actionText: actionText
+        }
+        healthNoticeAction = action
+        healthNoticeCode = noticeCode
+        if (healthNoticeTimer) {
+            healthNoticeTimer.restart()
+        }
+    }
+
+    // Health-state copy from plan 19, 5.5.1. The server state is authoritative;
+    // the banner never invents a billing result.
+    function showHealthAction(action, health) {
+        if (!health) {
+            return
+        }
+        var state = String(health.state || "")
+        if (healthNotice !== null && healthNoticeCode === state) {
+            // The server repeats the same state every sample; do not restart
+            // the banner on every report.
+            return
+        }
+        var criticalState = state === "broken_user" ||
+            state === "broken_club" || state === "both_break" ||
+            state === "control_unknown" || state === "stream_stall"
+        if (healthNotice !== null && healthNoticeCode !== state && !criticalState) {
+            // A low-balance/closing notice is more actionable than a degraded
+            // or suspect hint; do not replace it.
+            return
+        }
+        var tone = "danger"
+        var title = ""
+        var text = ""
+        var nextAction = ""
+        var actionText = ""
+        if (state === "broken_user" || state === "both_break") {
+            title = state === "both_break" ? qsTr("Нет связи") : qsTr("Связь потеряна")
+            text = state === "both_break"
+                ? qsTr("Проверьте интернет. Оплата приостановлена.")
+                : qsTr("Пытаемся переподключиться. Оплата приостановлена.")
+            nextAction = "reconnect"
+            actionText = qsTr("Переподключиться")
+        }
+        else if (state === "broken_club") {
+            title = qsTr("Компьютер не отвечает")
+            text = qsTr("Сессия остановлена. Оплата приостановлена.")
+            nextAction = "clubs"
+            actionText = qsTr("Выбрать клуб")
+        }
+        else if (state === "control_unknown") {
+            tone = "warning"
+            title = qsTr("Сервер недоступен")
+            text = qsTr("Проверяем состояние. Оплата приостановлена.")
+        }
+        else if (state === "stream_stall") {
+            tone = "warning"
+            title = qsTr("Изображение остановилось")
+            text = qsTr("Пытаемся восстановить соединение.")
+            nextAction = "session"
+            actionText = qsTr("К сессии")
+        }
+        else if (state === "suspect_user") {
+            tone = "warning"
+            title = qsTr("Проверяем связь")
+            text = qsTr("Нет данных от приложения.")
+        }
+        else if (state === "degraded") {
+            tone = "warning"
+            title = qsTr("Связь нестабильна")
+            text = qsTr("Изображение может тормозить.")
+        }
+        else if (action === "stop") {
+            title = qsTr("Сессия остановлена")
+            text = qsTr("Итоговое списание считает сервер.")
+            nextAction = "session"
+            actionText = qsTr("К сессии")
+        }
+        if (title.length === 0) {
+            return
+        }
+        healthNotice = {
+            tone: tone,
+            title: title,
+            text: text,
+            actionText: actionText
+        }
+        healthNoticeAction = nextAction
+        healthNoticeCode = state
+        if (healthNoticeTimer) {
+            healthNoticeTimer.restart()
+        }
+    }
+
+    function dismissHealthNotice() {
+        if (healthNoticeTimer) {
+            healthNoticeTimer.stop()
+        }
+        healthNotice = null
+        healthNoticeAction = ""
+        healthNoticeCode = ""
+    }
+
+    function runHealthNoticeAction() {
+        var action = healthNoticeAction
+        dismissHealthNotice()
+        if (action === "wallet") {
+            showSection("wallet")
+        }
+        else if (action === "clubs") {
+            showSection("clubs")
+        }
+        else if (action === "session") {
+            showSection("sessions")
+        }
+        else if (action === "reconnect") {
+            if (session && session.id !== undefined) {
+                Api.reconnectSession(api, String(session.id))
+            }
+            showSection("sessions")
+        }
+    }
+
     // The window forces focus on the pushed page (main.qml), which would land
     // on this shell root. Restore focus to the topmost screen once the push
     // has settled; only navigation and startup call this.
@@ -489,6 +672,7 @@ Item {
             pageSource = ""
             wordsVisible = false
             recoveryVisible = false
+            dismissHealthNotice()
             if (mode === "onboarding") {
                 syncWords()
             }
@@ -582,6 +766,9 @@ Item {
                 shell.sessionFetchedAt = Date.now()
                 var previousSessionStatus = shell.session ? String(shell.session.status || "") : ""
                 shell.session = Api.sessionOf(data)
+                if (shell.session === null) {
+                    shell.dismissHealthNotice()
+                }
                 var nextSessionStatus = shell.session ? String(shell.session.status || "") : ""
                 if (previousSessionStatus !== nextSessionStatus &&
                         (nextSessionStatus === "" || nextSessionStatus === "expired" ||
@@ -606,6 +793,7 @@ Item {
                     // The lease is gone: tear down its NetBird profile. The
                     // connect material is cleared by LegionApi for the stopped
                     // lease only.
+                    shell.dismissHealthNotice()
                     ComputerManager.stopLegionConnect()
                 }
                 // If a read is in flight, keep its guard until the reply
@@ -802,6 +990,22 @@ Item {
             }
         }
 
+        function onSessionHealthNotice(code, notice) {
+            if (shell.mode !== "app" || !shell.api || !shell.api.leaseId) {
+                // A notice queued while the stream was running may be
+                // delivered after stop cleared the lease; do not show it.
+                return
+            }
+            shell.showHealthNotice(code, notice)
+        }
+
+        function onSessionHealthAction(action, health) {
+            if (shell.mode !== "app" || !shell.api || !shell.api.leaseId) {
+                return
+            }
+            shell.showHealthAction(action, health)
+        }
+
         function onQueueEvent(name, data) {
             if (shell.mode !== "app") {
                 return
@@ -928,6 +1132,13 @@ Item {
     }
 
     Timer {
+        id: healthNoticeTimer
+        interval: 12000
+        repeat: false
+        onTriggered: shell.dismissHealthNotice()
+    }
+
+    Timer {
         id: queueTimer
         interval: shell.queuePollInterval
         repeat: true
@@ -994,6 +1205,18 @@ Item {
     }
 
     // ---- notifications --------------------------------------------------
+
+    NoticeBanner {
+        id: healthBanner
+        anchors.horizontalCenter: contentHost.horizontalCenter
+        anchors.bottom: contentHost.bottom
+        anchors.bottomMargin: Theme.spaceL
+        width: Math.min(560, contentHost.width - Theme.spaceXl * 2)
+        z: 40
+        notice: shell.healthNotice
+        onDismissed: shell.dismissHealthNotice()
+        onActionClicked: shell.runHealthNoticeAction()
+    }
 
     NotificationCenter {
         id: notificationCenter

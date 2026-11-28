@@ -3,6 +3,7 @@
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
 #include "backend/sessiondeadline.h"
+#include "account/sessionhealthagent.h"
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -569,6 +570,9 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_NoticeFired5(false),
       m_NoticeFiredFinal(false),
       m_NoticeHideAtMs(0),
+      m_NoticeServerOwned(false),
+      m_LastSdlNoticePollMs(0),
+      m_FirstFrameSeen(false),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
       m_OpusDecoder(nullptr),
@@ -585,7 +589,56 @@ void Session::checkSessionDeadline()
     // Auto-hide a notice once its display window elapses.
     if (m_NoticeHideAtMs != 0 && nowMs >= m_NoticeHideAtMs) {
         m_NoticeHideAtMs = 0;
+        m_NoticeServerOwned = false;
         m_OverlayManager.setOverlayState(Overlay::OverlayNotification, false);
+    }
+
+    // Server-authoritative notices from the health agent. Poll at most once a
+    // second; the agent writes under a mutex and never touches QML or this
+    // loop. The local SessionDeadline countdown below stays as the offline
+    // fallback.
+    if (m_LastSdlNoticePollMs == 0 || nowMs - m_LastSdlNoticePollMs >= 900) {
+        m_LastSdlNoticePollMs = nowMs;
+
+        QVariantMap notice;
+        if (SessionHealthAgent::takeSdlNotice(&notice)) {
+            QString text = notice.value(QStringLiteral("message")).toString();
+            if (text.isEmpty()) {
+                const QString code =
+                    notice.value(QStringLiteral("code")).toString();
+                const int minutesLeft =
+                    notice.value(QStringLiteral("minutes_left")).toInt(0);
+                if (code == QLatin1String("low_balance")) {
+                    text = minutesLeft > 0
+                        ? QStringLiteral("Баланс заканчивается\nПополните счёт, иначе сессия завершится")
+                        : QStringLiteral("Пополните баланс, иначе сессия завершится");
+                }
+                else if (code == QLatin1String("club_closing")) {
+                    text = QStringLiteral("Клуб скоро закроется\nЗавершите текущий матч");
+                }
+                else if (code == QLatin1String("session_ending")) {
+                    text = QStringLiteral("Сессия скоро завершится");
+                }
+                else {
+                    text = QStringLiteral("Проверьте состояние сессии");
+                }
+            }
+
+            m_OverlayManager.updateOverlayText(Overlay::OverlayNotification,
+                                               text.toUtf8().constData());
+            m_OverlayManager.setOverlayState(Overlay::OverlayNotification, true);
+            m_NoticeHideAtMs = nowMs + 8000;
+            m_NoticeServerOwned = true;
+            // The server notice is authoritative for this tick; do not let a
+            // simultaneous local threshold overwrite it.
+            return;
+        }
+    }
+
+    // A server notice owns the overlay until it auto-hides; the local
+    // countdown is only the offline fallback, not a second source of truth.
+    if (m_NoticeServerOwned) {
+        return;
     }
 
     if (!SessionDeadline::has()) {
@@ -600,6 +653,7 @@ void Session::checkSessionDeadline()
                                            text.toUtf8().constData());
         m_OverlayManager.setOverlayState(Overlay::OverlayNotification, true);
         m_NoticeHideAtMs = nowMs + 8000;
+        m_NoticeServerOwned = false;
     };
 
     // Escalating warnings before the reservation/closing end, then one final
@@ -2062,6 +2116,13 @@ void Session::exec()
             switch (event.user.code) {
             case SDL_CODE_FRAME_READY:
                 if (m_VideoDecoder != nullptr) {
+                    // Frame clock for the health report runs in another thread;
+                    // it only touches a mutex-protected timestamp.
+                    SessionHealthAgent::noteFrameProduced();
+                    if (!m_FirstFrameSeen) {
+                        m_FirstFrameSeen = true;
+                        emit firstFrameRendered();
+                    }
                     m_VideoDecoder->renderFrameOnMainThread();
                 }
                 break;

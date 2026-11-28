@@ -133,6 +133,14 @@ public:
     Q_INVOKABLE void reconnectSession(const QString &id);
     Q_INVOKABLE void connectSession(const QString &id);
 
+    // Stream lifecycle events from StreamSegue. They only update the health
+    // agent's state and ask its worker for an immediate sample; no network
+    // call is made on the QML/SDL thread.
+    Q_INVOKABLE void reportStreamStarted();
+    Q_INVOKABLE void reportStreamReconnecting();
+    Q_INVOKABLE void reportFirstFrame();
+    Q_INVOKABLE void reportStreamEnded();
+
     // Re-emits persisted one-shot connect material (vault-backed). When
     // expectedSessionId is non-empty the material must belong to that lease.
     // Returns true when valid material was found and connectMaterialReady was
@@ -152,9 +160,10 @@ public:
     Q_INVOKABLE void leaveQueue(const QString &id);
     Q_INVOKABLE void claimQueue(const QString &id);
 
-    // Latest lease health notice for the SDL loop. The agent also emits
-    // sessionHealthNotice; takeSessionNotice() is the pull side and consumes
-    // the oldest queued notice. Empty when nothing is pending.
+    // QML pull side for the latest lease health notice. The SDL loop uses the
+    // agent's separate static slot (SessionHealthAgent::takeSdlNotice) so the
+    // two surfaces never consume each other's copy. Empty when nothing is
+    // pending.
     Q_INVOKABLE QVariantMap takeSessionNotice();
 
     Q_INVOKABLE void openExternal(const QString &url);
@@ -268,6 +277,7 @@ private:
 
     void startHealthAgent(const QJsonObject &payload, const QString &leaseId);
     void stopHealthAgent();
+    void setHealthPhase(const QString &phase);
     static QString healthTokenFromJson(const QJsonObject &json);
     static int healthNextReportMs(const QJsonObject &json);
 

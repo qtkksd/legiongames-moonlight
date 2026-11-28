@@ -60,10 +60,29 @@ public:
     // abort. Idempotent. Safe to call from the UI thread.
     void stop();
 
+    // Sends one final report (phase/stream state set by the caller) and then
+    // stops. Best effort: if the network does not answer within timeoutMs the
+    // request is aborted and the worker is joined, so the caller is bounded.
+    void finalize(int timeoutMs = 1500);
+
     // Asks the worker for an immediate report (stream start/stop, first frame,
     // decoder error, stream end). Never blocks and never performs I/O on the
-    // calling thread.
+    // calling thread. The next request is rebuilt from the current state even
+    // if a previous report is still waiting for a retry.
     void submitReport();
+
+    // Frame clock shared with the SDL loop. The loop calls noteFrameProduced()
+    // for every rendered frame; buildReport() reads the age without touching
+    // QML or the stream thread. No allocation, no I/O, no Qt event delivery.
+    static void noteFrameProduced();
+    static void resetFrameClock();
+
+    // Server notices for the SDL loop. The agent queues them under a mutex;
+    // Session::checkSessionDeadline() polls at most once per second. This is
+    // separate from the QML notice list so both surfaces see the same notice
+    // without consuming each other's copy.
+    static bool takeSdlNotice(QVariantMap *notice);
+    static void clearSdlNotices();
 
     bool hasNotice() const;
     // Pops the oldest server notice. The returned map is the server notice
@@ -79,6 +98,10 @@ public:
                         bool audioOk = false, bool inputOk = false,
                         const QString &decoder = QString(),
                         const QString &error = QString());
+    // Atomically sets the phase and the stream flags so a report cannot be
+    // built between the two updates.
+    void setPhaseStream(const QString &phase, const QString &state,
+                        bool firstFrame);
 
 signals:
     // Emitted from the worker thread; the receiver must live in another
@@ -116,6 +139,8 @@ private:
     QEventLoop *m_waitLoop = nullptr;
     bool m_running = false;
     bool m_submitRequested = false;
+    bool m_forceFreshSample = false;
+    bool m_finalReport = false;
     int m_initialReportDelayMs = 0;
     QElapsedTimer m_monotonic;
     qint64 m_sequence = 0;

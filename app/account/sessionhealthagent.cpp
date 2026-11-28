@@ -16,6 +16,28 @@
 
 namespace {
 
+// SDL frame clock. The stream loop writes it; the reporter thread reads it.
+QMutex g_frameMutex;
+qint64 g_lastFrameMs = 0;
+
+// One pending in-stream notice. It is intentionally a single slot: the SDL
+// overlay can only show one message at a time, and the server repeats a notice
+// while it still applies. Separate from SessionHealthAgent::m_notices so the
+// QML signal and the SDL poll do not consume each other's copy.
+QMutex g_sdlNoticeMutex;
+QVariantMap g_sdlNotice;
+bool g_sdlNoticePending = false;
+
+int currentFrameAgeMs()
+{
+    QMutexLocker locker(&g_frameMutex);
+    if (g_lastFrameMs <= 0) {
+        return -1;
+    }
+    return static_cast<int>(
+        qMax<qint64>(0, QDateTime::currentMSecsSinceEpoch() - g_lastFrameMs));
+}
+
 // Plan 19, 5.2: retry with 2, 5, 10 and then 30 seconds.
 int nextBackoffMs(int *index)
 {
@@ -186,6 +208,7 @@ void SessionHealthAgent::start()
             // Already reporting: ask for an immediate sample instead of
             // starting a second worker.
             m_submitRequested = true;
+            m_forceFreshSample = true;
             if (m_waitLoop != nullptr) {
                 QMetaObject::invokeMethod(m_waitLoop, "quit",
                                           Qt::QueuedConnection);
@@ -207,6 +230,8 @@ void SessionHealthAgent::start()
         }
         m_running = true;
         m_submitRequested = false;
+        m_forceFreshSample = false;
+        m_finalReport = false;
     }
 
     QThread::start();
@@ -219,6 +244,8 @@ void SessionHealthAgent::stop()
     {
         QMutexLocker locker(&m_mutex);
         m_submitRequested = false;
+        m_forceFreshSample = false;
+        m_finalReport = false;
         if (m_waitLoop != nullptr) {
             QMetaObject::invokeMethod(m_waitLoop, "quit", Qt::QueuedConnection);
         }
@@ -235,6 +262,36 @@ void SessionHealthAgent::stop()
         // loop show a stale low-balance/closing message in the next session.
         m_notices.clear();
     }
+    clearSdlNotices();
+}
+
+void SessionHealthAgent::finalize(int timeoutMs)
+{
+    bool running = false;
+    {
+        QMutexLocker locker(&m_mutex);
+        running = m_running;
+        if (running) {
+            // One last sample with the caller's phase/stream state, then the
+            // worker exits by itself. submitReport() may be racing; both only
+            // set flags under m_mutex.
+            m_finalReport = true;
+            m_submitRequested = true;
+            m_forceFreshSample = true;
+            if (m_waitLoop != nullptr) {
+                QMetaObject::invokeMethod(m_waitLoop, "quit",
+                                          Qt::QueuedConnection);
+            }
+        }
+    }
+
+    if (running) {
+        // Bounded: a dead network must not hold the UI. stop() below aborts
+        // the in-flight request and joins the worker.
+        wait(qBound(0, timeoutMs, 5000));
+    }
+
+    stop();
 }
 
 void SessionHealthAgent::submitReport()
@@ -244,9 +301,43 @@ void SessionHealthAgent::submitReport()
         return;
     }
     m_submitRequested = true;
+    m_forceFreshSample = true;
     if (m_waitLoop != nullptr) {
         QMetaObject::invokeMethod(m_waitLoop, "quit", Qt::QueuedConnection);
     }
+}
+
+void SessionHealthAgent::noteFrameProduced()
+{
+    QMutexLocker locker(&g_frameMutex);
+    g_lastFrameMs = QDateTime::currentMSecsSinceEpoch();
+}
+
+void SessionHealthAgent::resetFrameClock()
+{
+    QMutexLocker locker(&g_frameMutex);
+    g_lastFrameMs = 0;
+}
+
+bool SessionHealthAgent::takeSdlNotice(QVariantMap *notice)
+{
+    QMutexLocker locker(&g_sdlNoticeMutex);
+    if (!g_sdlNoticePending) {
+        return false;
+    }
+    if (notice != nullptr) {
+        *notice = g_sdlNotice;
+    }
+    g_sdlNotice.clear();
+    g_sdlNoticePending = false;
+    return true;
+}
+
+void SessionHealthAgent::clearSdlNotices()
+{
+    QMutexLocker locker(&g_sdlNoticeMutex);
+    g_sdlNotice.clear();
+    g_sdlNoticePending = false;
 }
 
 bool SessionHealthAgent::hasNotice() const
@@ -318,6 +409,25 @@ void SessionHealthAgent::setStreamState(const QString &state, bool firstFrame,
     m_stream = stream;
 }
 
+void SessionHealthAgent::setPhaseStream(const QString &phase,
+                                        const QString &state,
+                                        bool firstFrame)
+{
+    if (!isSupportedPhase(phase)) {
+        return;
+    }
+    const QString normalized =
+        state.isEmpty() ? QStringLiteral("idle") : state;
+    QMutexLocker locker(&m_mutex);
+    m_phase = phase;
+    m_stream.insert(QStringLiteral("state"), normalized);
+    m_stream.insert(QStringLiteral("first_frame"), firstFrame);
+    if (normalized == QLatin1String("streaming") && !firstFrame) {
+        m_stream.insert(QStringLiteral("last_frame_age_ms"), 0);
+        m_stream.insert(QStringLiteral("error"), QString());
+    }
+}
+
 void SessionHealthAgent::run()
 {
     // The manager is created in the worker thread: QNetworkAccessManager is
@@ -349,15 +459,35 @@ void SessionHealthAgent::run()
             break;
         }
 
+        bool forceFresh = false;
+        {
+            QMutexLocker locker(&m_mutex);
+            forceFresh = m_forceFreshSample;
+            m_forceFreshSample = false;
+        }
+        if (forceFresh) {
+            // A transition event is newer than a report waiting for a retry.
+            pendingBody.clear();
+        }
+
         delay = postReport(&manager, &pendingBody, &backoffIndex);
         if (delay < 0) {
             break;
+        }
+
+        {
+            QMutexLocker locker(&m_mutex);
+            if (m_finalReport) {
+                break;
+            }
         }
     }
 
     {
         QMutexLocker locker(&m_mutex);
         m_running = false;
+        m_submitRequested = false;
+        m_finalReport = false;
     }
 }
 
@@ -410,7 +540,22 @@ QJsonObject SessionHealthAgent::buildReport()
                                           : 0));
     report.insert(QStringLiteral("netbird"), m_netbird);
     report.insert(QStringLiteral("sunshine"), m_sunshine);
-    report.insert(QStringLiteral("stream"), m_stream);
+
+    // The SDL loop owns the real frame clock. A rendered frame is proof that
+    // the stream has started, so report first_frame even when the QML signal
+    // was missed (CLI launch or a page change).
+    QJsonObject stream = m_stream;
+    const int frameAgeMs = currentFrameAgeMs();
+    stream.insert(QStringLiteral("streaming"),
+                  frameAgeMs >= 0 && frameAgeMs <= 2000);
+    if (frameAgeMs >= 0) {
+        stream.insert(QStringLiteral("last_frame_age_ms"), frameAgeMs);
+        if (stream.value(QStringLiteral("state")).toString() ==
+                QLatin1String("streaming")) {
+            stream.insert(QStringLiteral("first_frame"), true);
+        }
+    }
+    report.insert(QStringLiteral("stream"), stream);
     report.insert(QStringLiteral("app"), app);
 
     return report;
@@ -586,9 +731,14 @@ QVariantMap SessionHealthAgent::queueNoticeLocked(const QJsonObject &notice,
         map.insert(QStringLiteral("health_state"), healthState);
     }
 
-    // A repeated identical notice is not a new user-visible event. A changed
-    // message or minutes_left is queued normally.
+    // A repeated identical notice is not a new QML event. A changed message or
+    // minutes_left is queued normally. The in-stream slot is refreshed anyway:
+    // the server repeats a notice while it still applies, and the SDL overlay
+    // shows it for 8 s per report cycle.
     if (!m_notices.isEmpty() && m_notices.last() == map) {
+        QMutexLocker sdlLocker(&g_sdlNoticeMutex);
+        g_sdlNotice = map;
+        g_sdlNoticePending = true;
         return QVariantMap();
     }
 
@@ -596,5 +746,14 @@ QVariantMap SessionHealthAgent::queueNoticeLocked(const QJsonObject &notice,
         m_notices.removeFirst();
     }
     m_notices.append(map);
+
+    // The SDL loop polls a separate single slot: the QML side may not consume
+    // notices and the overlay must still see the server message mid-stream.
+    {
+        QMutexLocker sdlLocker(&g_sdlNoticeMutex);
+        g_sdlNotice = map;
+        g_sdlNoticePending = true;
+    }
+
     return map;
 }

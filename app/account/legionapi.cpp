@@ -494,6 +494,7 @@ void LegionApi::startHealthAgent(const QJsonObject &payload, const QString &leas
 
     const bool alreadyReporting =
         m_healthAgent->isActive() && m_healthAgent->leaseId() == lease;
+    const bool sameLease = m_healthAgent->leaseId() == lease;
     if (!alreadyReporting && m_healthAgent->isActive()) {
         stopHealthAgent();
     }
@@ -507,6 +508,16 @@ void LegionApi::startHealthAgent(const QJsonObject &payload, const QString &leas
         // the per-lease rate limit.
         return;
     }
+    if (!sameLease) {
+        // A new lease starts from a clean stream projection: no ended/stalled
+        // state or frame age from the previous lease may leak into the first
+        // sample. Restarting the same lease after a transport failure keeps
+        // the live stream state and frame clock.
+        SessionHealthAgent::resetFrameClock();
+        SessionHealthAgent::clearSdlNotices();
+        m_healthAgent->setStreamState(QStringLiteral("idle"), false, 0, 0,
+                                      false, false, QString(), QString());
+    }
     const int nextMs = healthNextReportMs(payload);
     if (nextMs > 0) {
         m_healthAgent->setInitialReportDelayMs(nextMs);
@@ -519,6 +530,56 @@ void LegionApi::stopHealthAgent()
     if (m_healthAgent != nullptr) {
         m_healthAgent->stop();
     }
+}
+
+void LegionApi::setHealthPhase(const QString &phase)
+{
+    if (m_healthAgent != nullptr) {
+        m_healthAgent->setPhase(phase);
+    }
+}
+
+void LegionApi::reportStreamStarted()
+{
+    if (m_healthAgent == nullptr) {
+        return;
+    }
+    // A new stream must not inherit the previous stream's frame clock.
+    SessionHealthAgent::resetFrameClock();
+    m_healthAgent->setPhaseStream(QStringLiteral("streaming"),
+                                  QStringLiteral("streaming"), false);
+    m_healthAgent->submitReport();
+}
+
+void LegionApi::reportStreamReconnecting()
+{
+    if (m_healthAgent == nullptr) {
+        return;
+    }
+    m_healthAgent->setPhaseStream(QStringLiteral("reconnecting"),
+                                  QStringLiteral("reconnecting"), false);
+    m_healthAgent->submitReport();
+}
+
+void LegionApi::reportFirstFrame()
+{
+    if (m_healthAgent == nullptr) {
+        return;
+    }
+    SessionHealthAgent::noteFrameProduced();
+    m_healthAgent->setPhaseStream(QStringLiteral("streaming"),
+                                  QStringLiteral("streaming"), true);
+    m_healthAgent->submitReport();
+}
+
+void LegionApi::reportStreamEnded()
+{
+    if (m_healthAgent == nullptr) {
+        return;
+    }
+    m_healthAgent->setPhaseStream(QStringLiteral("stopping"),
+                                  QStringLiteral("ended"), false);
+    m_healthAgent->submitReport();
 }
 
 QString LegionApi::healthTokenFromJson(const QJsonObject &json)
@@ -562,8 +623,8 @@ int LegionApi::healthNextReportMs(const QJsonObject &json)
 
 QVariantMap LegionApi::takeSessionNotice()
 {
-    // The agent emits sessionHealthNotice asynchronously; this pull path is
-    // for the SDL loop, which cannot depend on QML signal delivery.
+    // The agent emits sessionHealthNotice asynchronously; the SDL loop uses the
+    // separate static slot in SessionHealthAgent. This pull path stays for QML.
     return m_healthAgent != nullptr ? m_healthAgent->takeNotice()
                                     : QVariantMap();
 }
@@ -672,6 +733,7 @@ bool LegionApi::resumeConnectMaterial(const QString &expectedSessionId)
     }
 
     setLeaseId(sessionId);
+    setHealthPhase(QStringLiteral("connecting"));
     startHealthAgent(payload, sessionId);
     emit connectMaterialReady(sessionId, payload.toVariantMap());
     return true;
@@ -2895,6 +2957,9 @@ void LegionApi::startSession(int clubId)
                        setBusy(false);
                        ++m_sessionMutationSeq;
                        emit response(QStringLiteral("session_start"), sessionData(result.json));
+                       // Creating the lease is the "preparing" phase: the
+                       // machine is reserved and provisioned, not connected.
+                       setHealthPhase(QStringLiteral("preparing"));
                        startHealthAgent(result.json, m_leaseId);
                    });
 }
@@ -2906,7 +2971,15 @@ void LegionApi::getCurrentSession()
     }
 
     const int readSeq = m_sessionMutationSeq;
-    m_client->get(QStringLiteral("/sessions/current"), true, CryptoUtil::randomUuid(),
+    QString currentPath = QStringLiteral("/sessions/current");
+    if (m_healthAgent == nullptr || !m_healthAgent->isActive()
+            || !m_healthAgent->hasHealthToken()) {
+        // The agent has no usable token (cold start, vault loss, terminal
+        // 401). Ask the server to reissue one; the normal poll must not
+        // rotate a token the running agent still holds.
+        currentPath += QStringLiteral("?health_token=1");
+    }
+    m_client->get(currentPath, true, CryptoUtil::randomUuid(),
                   [this, readSeq](const ApiResult &result) {
                       if (!result.ok) {
                           if (result.httpStatus == 404) {
@@ -2937,7 +3010,28 @@ void LegionApi::getCurrentSession()
                           return;
                       }
                       emit response(QStringLiteral("session_current"), sessionData(result.json));
-                       startHealthAgent(result.json, m_leaseId);
+                      // A current read may reissue the health token for a
+                      // live lease. Starting a stopped agent resets nothing
+                      // (the sequence lives in the agent instance); an already
+                      // active reporter is only re-configured with the new
+                      // token and does not send an extra report.
+                      const bool alreadyReporting = m_healthAgent != nullptr &&
+                          m_healthAgent->isActive() &&
+                          m_healthAgent->leaseId() == m_leaseId;
+                      if (!alreadyReporting && !m_leaseId.isEmpty()) {
+                          QJsonObject session =
+                              result.json.value(QStringLiteral("session")).toObject();
+                          if (session.isEmpty() &&
+                                  result.json.contains(QStringLiteral("id"))) {
+                              session = result.json;
+                          }
+                          const QString status =
+                              session.value(QStringLiteral("status")).toString();
+                          setHealthPhase(status == QLatin1String("pending")
+                                             ? QStringLiteral("preparing")
+                                             : QStringLiteral("connecting"));
+                      }
+                      startHealthAgent(result.json, m_leaseId);
                   });
 }
 
@@ -2970,7 +3064,15 @@ void LegionApi::stopSession(const QString &id)
         return;
     }
 
-    stopHealthAgent();
+    // Plan 19, 5.8: send a final stopping report, then stop. finalize() is
+    // bounded and leaves the server watchdog as the backstop. A stale page
+    // stopping an older lease must not kill the reporter of the live one.
+    if (m_healthAgent != nullptr &&
+            (m_leaseId.isEmpty() || id.trimmed() == m_leaseId)) {
+        m_healthAgent->setPhaseStream(QStringLiteral("stopping"),
+                                      QStringLiteral("ended"), false);
+        m_healthAgent->finalize(1000);
+    }
     m_client->post(QStringLiteral("/sessions/") + id.trimmed() + QStringLiteral("/stop"),
                    QJsonObject(), true, CryptoUtil::randomUuid(),
                    [this, id](const ApiResult &result) {
@@ -3017,6 +3119,8 @@ void LegionApi::connectSession(const QString &id)
              QStringLiteral("Сеанс не найден."));
         return;
     }
+    // The user is connecting to an already prepared lease.
+    setHealthPhase(QStringLiteral("connecting"));
     setBusy(true);
     clearError();
 
@@ -3070,7 +3174,7 @@ void LegionApi::connectSession(const QString &id)
                        // error or an app restart must not lose the only copy of
                        // the one-shot material.
                        persistConnectMaterial(sessionId, result.json);
-                        startHealthAgent(result.json, sessionId);
+                       startHealthAgent(result.json, sessionId);
                        ++m_sessionMutationSeq;
 
                        // The shell is the persistent owner of the connect
@@ -3092,10 +3196,16 @@ void LegionApi::reconnectSession(const QString &id)
         return;
     }
 
+    // Reconnect is an explicit transition that the server should see at once.
+    setHealthPhase(QStringLiteral("reconnecting"));
+    const bool wasReporting = m_healthAgent != nullptr &&
+        m_healthAgent->isActive() &&
+        m_healthAgent->leaseId() == id.trimmed();
+
     m_client->post(QStringLiteral("/sessions/") + id.trimmed() +
                        QStringLiteral("/reconnect"),
                    QJsonObject(), true, CryptoUtil::randomUuid(),
-                   [this, id](const ApiResult &result) {
+                   [this, id, wasReporting](const ApiResult &result) {
                        if (!result.ok) {
                            failFromResult(QStringLiteral("session_reconnect"), result,
                                           [this, id]() { reconnectSession(id); });
@@ -3105,6 +3215,9 @@ void LegionApi::reconnectSession(const QString &id)
                        emit response(QStringLiteral("session_reconnect"),
                                      sessionData(result.json));
                        startHealthAgent(result.json, m_leaseId);
+                       if (wasReporting && m_healthAgent != nullptr) {
+                           m_healthAgent->submitReport();
+                       }
                    });
 }
 
@@ -3191,6 +3304,7 @@ void LegionApi::claimQueue(const QString &id)
         return;
     }
 
+    // The claim creates a lease and starts provisioning.
     m_client->post(QStringLiteral("/queue/") + id.trimmed() + QStringLiteral("/claim"),
                    QJsonObject(), true, CryptoUtil::randomUuid(),
                    [this, id](const ApiResult &result) {
@@ -3201,6 +3315,7 @@ void LegionApi::claimQueue(const QString &id)
                        }
                        ++m_sessionMutationSeq;
                        emit response(QStringLiteral("queue_claim"), sessionData(result.json));
+                       setHealthPhase(QStringLiteral("preparing"));
                        startHealthAgent(result.json, m_leaseId);
                    });
 }

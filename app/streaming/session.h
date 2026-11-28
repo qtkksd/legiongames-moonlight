@@ -141,6 +141,10 @@ signals:
 
     void sessionFinished(int portTestResult);
 
+    // Emitted once when the first decoded frame is ready for the SDL loop.
+    // StreamSegue forwards it to the health agent as an immediate event.
+    void firstFrameRendered();
+
     // Emitted after sessionFinished() when the session is ready to be destroyed
     void readyForDeletion();
 
@@ -282,6 +286,9 @@ private:
     bool m_NoticeFired5;
     bool m_NoticeFiredFinal;
     qint64 m_NoticeHideAtMs;
+    bool m_NoticeServerOwned;
+    qint64 m_LastSdlNoticePollMs;
+    bool m_FirstFrameSeen;
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;
